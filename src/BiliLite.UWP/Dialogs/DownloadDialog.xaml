@@ -64,7 +64,11 @@
                     CornerRadius="2"
                     Margin="0 4"
                     BorderThickness="{ThemeResource ComboBoxBorderThemeThickness}">
-                <ListView x:Name="listView" ItemsSource="{x:Bind Path=downloadItem.Episodes,Mode=OneWay}"  SelectionMode="Multiple" Height="200">
+                <ListView x:Name="listView" 
+                          ItemsSource="{x:Bind Path=downloadItem.Episodes,Mode=OneWay}"  
+                          SelectionMode="Multiple" 
+                          IsMultiSelectCheckBoxEnabled="True"
+                          Height="200">
                     <ListView.ItemTemplate>
                         <DataTemplate x:DataType="download:DownloadEpisodeItemViewModel">
                             <Grid >
@@ -74,7 +78,7 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock TextTrimming="CharacterEllipsis" VerticalAlignment="Center" HorizontalAlignment="Left" Text="{x:Bind Path=Title}" ToolTipService.ToolTip="{x:Bind Path=Title}"></TextBlock>
-                                <Border Grid.Column="1" Visibility="{x:Bind Path=ShowBadge,Mode=OneWay}" HorizontalAlignment="Right" Background="HotPink" CornerRadius="4">
+                                <Border Grid.Column="1" Visibility="{x:Bind Path=ShowBadge,Mode=OneWay}" HorizontalAlignment="Right" Background="{ThemeResource SystemAccentColor}" CornerRadius="4">
                                     <TextBlock FontSize="12" Foreground="White" Margin="4" Text="{x:Bind Path=Badge,Mode=OneWay}"></TextBlock>
                                 </Border>
                                 <TextBlock  Grid.Column="2" FontSize="12" VerticalAlignment="Center" Foreground="Red"  Visibility="{x:Bind Path=State,Mode=OneWay,Converter={StaticResource display},ConverterParameter=99}" Text="{x:Bind Path=ErrorMessage,Mode=OneWay}"></TextBlock>
@@ -91,6 +95,36 @@
                     <ListView.ItemContainerStyle>
                         <Style TargetType="ListViewItem">
                             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListViewItem">
+                                        <ListViewItemPresenter 
+                                            CheckBrush="{ThemeResource SystemControlForegroundBaseMediumHighBrush}"
+                                            ContentMargin="{TemplateBinding Padding}" 
+                                            CheckMode="Inline" 
+                                            ContentTransitions="{TemplateBinding ContentTransitions}" 
+                                            CheckBoxBrush="{ThemeResource SystemControlForegroundBaseMediumHighBrush}" 
+                                            DragForeground="{ThemeResource ListViewItemDragForegroundThemeBrush}" 
+                                            DragOpacity="{ThemeResource ListViewItemDragThemeOpacity}" 
+                                            DragBackground="{ThemeResource ListViewItemDragBackgroundThemeBrush}" 
+                                            DisabledOpacity="{ThemeResource ListViewItemDisabledThemeOpacity}" 
+                                            FocusBorderBrush="{ThemeResource SystemControlForegroundAltHighBrush}" 
+                                            FocusSecondaryBorderBrush="{ThemeResource SystemControlForegroundBaseHighBrush}" 
+                                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}" 
+                                            PointerOverForeground="{ThemeResource SystemControlHighlightAltBaseHighBrush}" 
+                                            PressedBackground="{ThemeResource SystemControlHighlightListMediumBrush}" 
+                                            PlaceholderBackground="{ThemeResource ListViewItemPlaceholderBackgroundThemeBrush}" 
+                                            PointerOverBackground="{ThemeResource SystemControlHighlightListLowBrush}" 
+                                            ReorderHintOffset="{ThemeResource ListViewItemReorderHintThemeOffset}" 
+                                            SelectedPressedBackground="{ThemeResource SystemControlHighlightListAccentHighBrush}" 
+                                            SelectionCheckMarkVisualEnabled="True" 
+                                            SelectedForeground="{ThemeResource SystemControlHighlightAltBaseHighBrush}" 
+                                            SelectedPointerOverBackground="{ThemeResource SystemControlHighlightListAccentMediumBrush}" 
+                                            SelectedBackground="{ThemeResource SystemControlHighlightListAccentLowBrush}" 
+                                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
                         </Style>
                     </ListView.ItemContainerStyle>
                    

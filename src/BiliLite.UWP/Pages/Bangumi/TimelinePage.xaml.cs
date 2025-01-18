@@ -1,7 +1,10 @@
 ﻿using BiliLite.Extensions;
 using BiliLite.Models.Common;
-using BiliLite.Modules;
+using BiliLite.Models.Common.Anime;
 using BiliLite.Services;
+using BiliLite.Services.Interfaces;
+using BiliLite.ViewModels.Season;
+using Microsoft.Extensions.DependencyInjection;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
@@ -14,21 +17,24 @@ namespace BiliLite.Pages.Bangumi
     /// <summary>
     /// 可用于自身或导航至 Frame 内部的空白页。
     /// </summary>
-    public sealed partial class TimelinePage : BasePage
+    public sealed partial class TimelinePage : BasePage, IUpdatePivotLayout
     {
-        Modules.AnimeTimelineVM timelineVM;
+        private AnimeTimelineViewModel m_viewModel;
+
         public TimelinePage()
         {
             this.InitializeComponent();
             Title = "番剧时间表";
         }
+
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {
             base.OnNavigatedTo(e);
-            if(e.NavigationMode== NavigationMode.New)
+            if (e.NavigationMode == NavigationMode.New)
             {
-                timelineVM = new AnimeTimelineVM((AnimeType)e.Parameter);
-                this.DataContext = timelineVM;
+                m_viewModel = App.ServiceProvider.GetRequiredService<AnimeTimelineViewModel>();
+                m_viewModel.Init((AnimeType)e.Parameter);
+                this.DataContext = m_viewModel;
                 // timeLine.ItemsSource = e.Parameter as List<AnimeTimelineModel>;
                 // timeLine.SelectedItem = (e.Parameter as List<AnimeTimelineModel>).FirstOrDefault(x => x.is_today);
             }
@@ -40,8 +46,8 @@ namespace BiliLite.Pages.Bangumi
             {
                 return;
             }
-            timelineVM.animeType = (cbType.SelectedItem as AnimeTypeItem).AnimeType;
-            await timelineVM.GetTimeline();
+            m_viewModel.AnimeType = (cbType.SelectedItem as AnimeTypeItem).AnimeType;
+            await m_viewModel.GetTimeline();
         }
 
         private void AdaptiveGridView_ItemClick(object sender, ItemClickEventArgs e)
@@ -69,6 +75,12 @@ namespace BiliLite.Pages.Bangumi
             var element = e.OriginalSource as FrameworkElement;
             var item = element.DataContext as AnimeTimelineItemModel;
             AnimeTimelineItemModelOpen(sender, item, true);
+        }
+
+        public void UpdatePivotLayout()
+        {
+            pivot.UseLayoutRounding = !pivot.UseLayoutRounding;
+            pivot.UseLayoutRounding = !pivot.UseLayoutRounding;
         }
     }
 }

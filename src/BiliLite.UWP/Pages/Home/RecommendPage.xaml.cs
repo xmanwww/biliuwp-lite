@@ -21,7 +21,7 @@ namespace BiliLite.Pages.Home
     /// <summary>
     /// 可用于自身或导航至 Frame 内部的空白页。
     /// </summary>
-    public sealed partial class RecommendPage : Page
+    public sealed partial class RecommendPage : Page, IRefreshablePage, IScrollRecoverablePage
     {
         #region Fields
 
@@ -38,6 +38,20 @@ namespace BiliLite.Pages.Home
             this.NavigationCacheMode = SettingService.GetValue<bool>(SettingConstants.UI.CACHE_HOME, true) ? NavigationCacheMode.Enabled : NavigationCacheMode.Disabled;
             m_viewModel = App.ServiceProvider.GetRequiredService<RecommendPageViewModel>();
             this.DataContext = m_viewModel;
+        }
+
+        #endregion
+
+        #region Public Methods
+
+        public async Task Refresh()
+        {
+            m_viewModel.Refresh();
+        }
+
+        public async void ScrollRecover()
+        {
+            await RecommendGridView.ScrollRecover();
         }
 
         #endregion
@@ -87,7 +101,7 @@ namespace BiliLite.Pages.Home
 
         private void RefreshContainer_RefreshRequested(Microsoft.UI.Xaml.Controls.RefreshContainer sender, Microsoft.UI.Xaml.Controls.RefreshRequestedEventArgs args)
         {
-            m_viewModel.Refresh();
+            Refresh();
         }
 
         private async void BannerItem_Click(object sender, RoutedEventArgs e)
@@ -111,6 +125,9 @@ namespace BiliLite.Pages.Home
                     return;
                 case "browser":
                     await Launcher.LaunchUriAsync(new Uri(threePoint.Url));
+                    return;
+                case "fastFilter":
+                    m_viewModel.AddFilterUser(threePoint.Subtitle);
                     return;
             }
         }

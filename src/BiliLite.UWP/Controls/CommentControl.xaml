@@ -11,6 +11,7 @@
     xmlns:convert="using:BiliLite.Converters" xmlns:modules="using:BiliLite.Modules"
     xmlns:comment="using:BiliLite.ViewModels.Comment"
     xmlns:common="using:BiliLite.Models.Common"
+    xmlns:viewModels="using:BiliLite.ViewModels" xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     d:DesignHeight="300"
     d:DesignWidth="400"
     x:Name="CommentControlContent"
@@ -37,18 +38,18 @@
             <Setter Property="BorderBrush" Value="#33808080"></Setter>
             <Setter Property="Padding" Value="0"></Setter>
         </Style>
-        <convert:ColorSelecteConvert x:Key="colorSelct" ></convert:ColorSelecteConvert>
+        <convert:ColorSelectedConvert x:Key="colorSelct" ></convert:ColorSelectedConvert>
         <convert:ColorConvert x:Key="colorConvert" ></convert:ColorConvert>
         <Flyout  x:Key="FaceFlyout" x:Name="FaceFlyout">
             <Grid Width="320">
                 <Pivot x:Name="PivotFace" ItemsSource="{x:Bind Path=emoteVM.Packages,Mode=OneWay}">
                     <Pivot.HeaderTemplate>
-                        <DataTemplate x:DataType="modules:EmotePackageModel">
+                        <DataTemplate x:DataType="viewModels:EmotePackageModel">
                             <TextBlock FontSize="18" Text="{x:Bind text}"></TextBlock>
                         </DataTemplate>
                     </Pivot.HeaderTemplate>
                     <Pivot.ItemTemplate>
-                        <DataTemplate >
+                        <DataTemplate x:DataType="viewModels:EmotePackageModel">
                             <GridView  ItemsSource="{Binding Path=emote,Mode=OneWay}" MaxHeight="300" SelectionMode="None" IsItemClickEnabled="True"  ItemClick="GridView_ItemClick">
                                 <!--<GridView.ItemContainerStyle>
                                                 -->
@@ -58,7 +59,7 @@
                                 <!--
                                             </GridView.ItemContainerStyle>-->
                                 <GridView.ItemTemplate>
-                                    <DataTemplate>
+                                    <DataTemplate x:DataType="viewModels:EmotePackageItemModel">
                                         <StackPanel >
                                             <Image Visibility="{Binding Path=showImage}"  Source="{Binding url}" Width="36" Margin="4 0"></Image>
                                             <TextBlock Width="90" TextAlignment="Center" Visibility="{Binding Path=showImage,Converter={StaticResource display}}" FontSize="12" HorizontalAlignment="Center" Text="{Binding text}"></TextBlock>
@@ -76,8 +77,8 @@
         </Flyout>
 
         <MenuFlyout x:Key="menu">
-            <MenuFlyoutItem  Click="BtnDeleteComment_Click" Visibility="{Binding showDelete}">删除</MenuFlyoutItem>
-            <MenuFlyoutItem>举报</MenuFlyoutItem>
+            <MenuFlyoutItem  Click="BtnDeleteComment_Click" Visibility="{Binding ShowDelete}">删除</MenuFlyoutItem>
+            <MenuFlyoutItem Click="MenuFlyoutItem_OnClick">举报</MenuFlyoutItem>
         </MenuFlyout>
         <DataTemplate x:Key="commentTemplate" x:DataType="comment:CommentViewModel">
             <Grid>
@@ -134,7 +135,7 @@
                     </Border>
                 </Grid>
 
-                <StackPanel Orientation="Horizontal" Margin="4 0" Grid.Column="1" >
+                <StackPanel ContextFlyout="{StaticResource menu}" Orientation="Horizontal" Margin="4 0" Grid.Column="1" >
                     <TextBlock VerticalAlignment="Center" Visibility="{x:Bind ShowTop}" FontSize="14" Margin="0 0 8 0" Foreground="DeepPink">[置顶]</TextBlock>
                     <TextBlock  Text="{x:Bind Path=Member.Uname}" 
                                 Foreground="{x:Bind Path=Member.Vip.VipType,Converter={StaticResource colorSelct},ConverterParameter=2}" VerticalAlignment="Center"></TextBlock>
@@ -182,7 +183,6 @@
                                    Text="{x:Bind Path=Member.UserSailing.Cardbg.Fan.NumDesc,Mode=OneWay}"></TextBlock>
                         </StackPanel>
                     </StackPanel>
-                    <AppBarButton Visibility="Collapsed" Style="{StaticResource AppBarButtonNoChevronStyle}" Flyout="{StaticResource ResourceKey=menu}" HorizontalAlignment="Right" Icon="More"  Width="48" ></AppBarButton>
                 </StackPanel>
 
                 <TextBlock Grid.Column="1" Grid.Row="1" Grid.ColumnSpan="2" FontSize="12" Foreground="Gray" Margin="4 0" VerticalAlignment="Top" ToolTipService.ToolTip="{x:Bind Path=Ctime,Converter={StaticResource Datetime}}">
@@ -240,8 +240,7 @@
                     IsItemClickEnabled="True">
                     <toolkit:AdaptiveGridView.ItemTemplate>
                         <DataTemplate x:DataType="common:NotePicture">
-                            <Grid
-                                Background="Transparent">
+                            <Grid>
                                 <toolkit:ImageEx
                                     Source="{x:Bind ImgSrc}"
                                     HorizontalAlignment="Center"
@@ -252,18 +251,18 @@
                     </toolkit:AdaptiveGridView.ItemTemplate>
                 </toolkit:AdaptiveGridView>
 
-                <Grid Margin="0 8 0 0" Grid.Row="3">
+                <Grid Margin="0 4" Grid.Row="3">
                     <StackPanel Orientation="{Binding ElementName=CommentControlContent, Path=DataContext.CommentActionOrientation}" VerticalAlignment="Center">
 
-                        <HyperlinkButton  Click="BtnLike_Click" Foreground="{x:Bind LikeColor,Mode=OneWay}" ToolTipService.ToolTip="{x:Bind Like}" Margin="4 0 8 0" HorizontalContentAlignment="Left">
+                        <HyperlinkButton  Click="BtnLike_Click" Foreground="{x:Bind LikeColor,Mode=OneWay}" ToolTipService.ToolTip="{x:Bind Like}" HorizontalContentAlignment="Left">
                             <StackPanel Orientation="Horizontal">
-                                <fa:FontAwesome Icon="Regular_ThumbsUp" FontSize="14"></fa:FontAwesome>
+                                <fa:FontAwesome Icon="Regular_ThumbsUp" FontSize="14" Margin="6 0"></fa:FontAwesome>
                                 <TextBlock  Margin="4 0" Text="{x:Bind LikeStr,Mode=OneWay}"></TextBlock>
                             </StackPanel>
                         </HyperlinkButton>
                         <HyperlinkButton  Click="BtnShowComment_Click" Foreground="Gray"  ToolTipService.ToolTip="{x:Bind Rcount}"  Margin="8 0" HorizontalContentAlignment="Left">
                             <StackPanel Orientation="Horizontal">
-                                <fa:FontAwesome Icon="Regular_Comment" FontSize="14"></fa:FontAwesome>
+                                <fa:FontAwesome Icon="Regular_Comment" FontSize="14" Margin="6 0"></fa:FontAwesome>
                                 <TextBlock Margin="4 0" Text="{x:Bind RcountStr,Mode=OneWay}"></TextBlock>
                             </StackPanel>
                         </HyperlinkButton>
@@ -291,13 +290,13 @@
                         <TextBox MaxLength="233" BorderThickness="0" TextWrapping="Wrap"  Text="{x:Bind Path=ReplyText,Mode=TwoWay}" FontSize="14" MinHeight="48" PlaceholderText="说点什么吧..." AcceptsReturn="True"></TextBox>
                         <Grid Margin="0 4 0 0">
                             <StackPanel Orientation="Horizontal">
-                                <Button FontSize="12" Padding="4" Visibility="Collapsed" Foreground="White" Background="{ThemeResource HighLightColor}">
+                                <Button FontSize="12" Padding="4" Visibility="Collapsed" Foreground="White" Background="{ThemeResource SystemAccentColor}">
                                     <StackPanel Orientation="Horizontal">
                                         <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="12" Glyph="&#xE775;" />
                                         <TextBlock Margin="4 0 0 0">颜文字</TextBlock>
                                     </StackPanel>
                                 </Button>
-                                <Button x:Name="BtnFace" Click="BtnFace_Click" FontSize="12" Padding="4" Margin="4 0" Foreground="White" Background="{ThemeResource HighLightColor}">
+                                <Button x:Name="BtnFace" Click="BtnFace_Click" FontSize="12" Padding="4" Margin="4 0" Foreground="White" Background="{ThemeResource SystemAccentColor}">
                                     <StackPanel Orientation="Horizontal">
                                         <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="12" Glyph="&#xE170;" />
                                         <TextBlock Margin="4 0 0 0">表情</TextBlock>
@@ -306,7 +305,7 @@
                                 </Button>
                             </StackPanel>
 
-                            <Button x:Name="BtnSendReply" Click="BtnSendReply_Click" FontSize="12" Padding="4" Width="64" Foreground="White" Background="{ThemeResource HighLightColor}" HorizontalAlignment="Right">回复</Button>
+                            <Button x:Name="BtnSendReply" Click="BtnSendReply_Click" FontSize="12" Padding="4" Width="64" Foreground="White" Background="{ThemeResource SystemAccentColor}" HorizontalAlignment="Right">回复</Button>
                         </Grid>
                     </StackPanel>
 
@@ -367,20 +366,20 @@
                                         </TextBox>
                                         <Grid Margin="0 4 0 0">
                                             <StackPanel Orientation="Horizontal">
-                                                <Button FontSize="12" Padding="4" Visibility="Collapsed" Foreground="White" Background="{ThemeResource HighLightColor}">
+                                                <Button FontSize="12" Padding="4" Visibility="Collapsed" Foreground="White" Background="{ThemeResource SystemAccentColor}">
                                                     <StackPanel Orientation="Horizontal">
                                                         <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="12" Glyph="&#xE775;" />
                                                         <TextBlock Margin="4 0 0 0">颜文字</TextBlock>
                                                     </StackPanel>
                                                 </Button>
-                                                <Button  Flyout="{StaticResource FaceFlyout}" FontSize="12" Padding="4" Margin="4 0" Foreground="White" Background="{ThemeResource HighLightColor}">
+                                                <Button  Flyout="{StaticResource FaceFlyout}" FontSize="12" Padding="4" Margin="4 0" Foreground="White" Background="{ThemeResource SystemAccentColor}">
                                                     <StackPanel Orientation="Horizontal">
                                                         <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="12" Glyph="&#xE170;" />
                                                         <TextBlock Margin="4 0 0 0">表情</TextBlock>
                                                     </StackPanel>
                                                 </Button>
                                             </StackPanel>
-                                            <Button x:Name="BtnReplyAt" Click="BtnReplyAt_Click" FontSize="12" Padding="4" Width="64" Foreground="White" Background="{ThemeResource HighLightColor}" HorizontalAlignment="Right">回复</Button>
+                                            <Button x:Name="BtnReplyAt" Click="BtnReplyAt_Click" FontSize="12" Padding="4" Width="64" Foreground="White" Background="{ThemeResource SystemAccentColor}" HorizontalAlignment="Right">回复</Button>
                                         </Grid>
                                     </StackPanel>
                                 </StackPanel>
@@ -389,7 +388,7 @@
                         </ListView.ItemTemplate>
 
                     </ListView>
-                    <ProgressBar   Visibility="{x:Bind Path=ShowLoading,Mode=OneWay}" IsIndeterminate="True" ></ProgressBar>
+                    <muxc:ProgressBar   Visibility="{x:Bind Path=ShowLoading,Mode=OneWay}" IsIndeterminate="True" ></muxc:ProgressBar>
                     <StackPanel HorizontalAlignment="Center" >
 
                         <HyperlinkButton HorizontalAlignment="Center"  FontSize="14" Click="BtnLoadMoreReply_Click" Visibility="{Binding ShowReplyMore}" >
@@ -405,7 +404,7 @@
                 <ListView  
                     Grid.Row="6"
                     Visibility="{x:Bind ShowHotReplies,Mode=OneWay}"
-                    ItemsSource="{x:Bind HotReplyContents,Mode=OneWay}" 
+                    ItemsSource="{x:Bind HotReplies,Mode=OneWay}" 
                     ItemContainerStyle="{StaticResource hotReplyStyle}"  
                     Background="{ThemeResource CardColor}"
                     Margin="0 0 8 0"
@@ -417,6 +416,7 @@
                         <DataTemplate>
                             <Grid>
                                 <ContentControl
+                                    Margin="4 0"
                                     FontSize="12" Content="{Binding Path=Content,Mode=OneWay}" Visibility="Visible">
                                 </ContentControl>
                             </Grid>
@@ -445,7 +445,7 @@
                     <TextBlock>按热门排序</TextBlock>
                 </HyperlinkButton>
             </StackPanel>
-            <AppBarButton x:Name="BtnRefresh" Click="BtnRefresh_Click" Margin="{x:Bind m_viewModel.BtnRefreshMargin,Mode=OneWay}" Width="40" Height="40" HorizontalAlignment="Right">
+            <AppBarButton x:Name="BtnRefresh" Click="BtnRefresh_Click" Width="40" Height="40" HorizontalAlignment="Right">
                 <AppBarButton.Icon>
                     <SymbolIcon Margin="0 -4 0 8" Symbol="Refresh"></SymbolIcon>
                 </AppBarButton.Icon>
@@ -462,7 +462,7 @@
 
             <ListView.Footer>
                 <StackPanel>
-                    <ProgressBar x:Name="PrLoad" Visibility="{x:Bind m_viewModel.PrLoadVisibility, Mode=OneWay}" IsIndeterminate="True" Background="#00000000" ></ProgressBar>
+                    <muxc:ProgressBar x:Name="PrLoad" Visibility="{x:Bind m_viewModel.PrLoadVisibility, Mode=OneWay}" IsIndeterminate="True"></muxc:ProgressBar>
                     <HyperlinkButton x:Name="BtnLoadMore" Click="BtnLoadMore_Click" Visibility="{x:Bind m_viewModel.BtnLoadMoreVisibility,Mode=OneWay}" HorizontalAlignment="Center">
                         <TextBlock>加载更多</TextBlock>
                     </HyperlinkButton>
@@ -471,7 +471,7 @@
                 </StackPanel>
             </ListView.Footer>
         </ListView>
-        <local:RoundButton x:Name="BtnOpenSendComment" Grid.Row="1" Click="BtnOpenSendComment_Click" VerticalAlignment="Bottom" Background="{ThemeResource HighLightColor}" Padding="12" Margin="16" HorizontalAlignment="Right">
+        <local:RoundButton x:Name="BtnOpenSendComment" Grid.Row="1" Click="BtnOpenSendComment_Click" VerticalAlignment="Bottom" Background="{ThemeResource SystemAccentColor}" Padding="12" Margin="16" HorizontalAlignment="Right">
             <fa:FontAwesome Icon="Regular_CommentAlt" Foreground="White"></fa:FontAwesome>
         </local:RoundButton>
     </Grid>

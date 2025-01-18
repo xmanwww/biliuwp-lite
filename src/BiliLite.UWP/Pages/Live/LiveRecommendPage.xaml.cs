@@ -1,19 +1,11 @@
 ﻿using BiliLite.Models.Common;
 using BiliLite.Modules.Live;
 using BiliLite.Services;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Runtime.InteropServices.WindowsRuntime;
-using Windows.Foundation;
-using Windows.Foundation.Collections;
-using Windows.UI.Xaml;
+using BiliLite.Services.Interfaces;
+using System.Threading.Tasks;
+
 using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Controls.Primitives;
-using Windows.UI.Xaml.Data;
-using Windows.UI.Xaml.Input;
-using Windows.UI.Xaml.Media;
+
 using Windows.UI.Xaml.Navigation;
 
 // https://go.microsoft.com/fwlink/?LinkId=234238 上介绍了“空白页”项模板
@@ -23,7 +15,7 @@ namespace BiliLite.Pages.Live
     /// <summary>
     /// 可用于自身或导航至 Frame 内部的空白页。
     /// </summary>
-    public sealed partial class LiveRecommendPage : BasePage
+    public sealed partial class LiveRecommendPage : BasePage, IRefreshablePage, IUpdatePivotLayout
     {
         readonly LiveRecommendVM liveRecommendVM;
         public LiveRecommendPage()
@@ -39,7 +31,7 @@ namespace BiliLite.Pages.Live
         }
         protected override void OnNavigatingFrom(NavigatingCancelEventArgs e)
         {
-            if(e.NavigationMode== NavigationMode.Back)
+            if (e.NavigationMode == NavigationMode.Back)
             {
                 this.NavigationCacheMode = NavigationCacheMode.Disabled;
             }
@@ -47,12 +39,12 @@ namespace BiliLite.Pages.Live
         }
         private async void pivot_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (pivot.SelectedItem==null)
+            if (pivot.SelectedItem == null)
             {
                 return;
             }
-           var item= pivot.SelectedItem as LiveRecommendItem;
-            if (item.Items.Count==0&&!item.Loading)
+            var item = pivot.SelectedItem as LiveRecommendItem;
+            if (item.Items.Count == 0 && !item.Loading)
             {
                 await item.GetItems();
             }
@@ -72,10 +64,23 @@ namespace BiliLite.Pages.Live
             });
         }
 
-        private void RefreshContainer_RefreshRequested(Microsoft.UI.Xaml.Controls.RefreshContainer sender, Microsoft.UI.Xaml.Controls.RefreshRequestedEventArgs args)
+        private async void RefreshContainer_RefreshRequested(Microsoft.UI.Xaml.Controls.RefreshContainer sender, Microsoft.UI.Xaml.Controls.RefreshRequestedEventArgs args)
         {
-            var data = sender.DataContext as LiveRecommendItem;
-            data.Refresh();
+            await Refresh();
+        }
+
+        public async Task Refresh()
+        {
+            if (pivot.SelectedItem is LiveRecommendItem item)
+            {
+                item.Refresh();
+            }
+        }
+
+        public void UpdatePivotLayout()
+        {
+            pivot.UseLayoutRounding = !pivot.UseLayoutRounding;
+            pivot.UseLayoutRounding = !pivot.UseLayoutRounding;
         }
     }
 }

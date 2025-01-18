@@ -1,17 +1,20 @@
-﻿using BiliLite.Pages;
+﻿using BiliLite.Controls;
+using BiliLite.Extensions;
+using BiliLite.Models.Common;
+using BiliLite.Pages;
+using BiliLite.Services;
+using BiliLite.Services.Interfaces;
+using BiliLite.ViewModels.Common;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml.Controls;
 using System;
+using System.Linq;
 using Windows.ApplicationModel.Core;
-using Windows.Foundation.Collections;
 using Windows.System;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Navigation;
-using BiliLite.Controls;
-using BiliLite.Models.Common;
-using BiliLite.Extensions;
-using BiliLite.Services;
 
 // https://go.microsoft.com/fwlink/?LinkId=402352&clcid=0x804 上介绍了“空白页”项模板
 
@@ -20,18 +23,26 @@ namespace BiliLite
     /// <summary>
     /// 可用于自身或导航至 Frame 内部的空白页。
     /// </summary>
-    public sealed partial class MainPage : Windows.UI.Xaml.Controls.Page
+    public sealed partial class MainPage : Windows.UI.Xaml.Controls.Page, IMainPage
     {
         private static readonly ILogger _logger = GlobalLogger.FromCurrentType();
+        private readonly ShortcutKeyService m_shortcutKeyService;
+        private readonly MainPageViewModel m_viewModel;
 
         public MainPage()
         {
+            m_viewModel = App.ServiceProvider.GetRequiredService<MainPageViewModel>();
+            m_shortcutKeyService = App.ServiceProvider.GetRequiredService<ShortcutKeyService>();
+            m_shortcutKeyService.SetMainPage(this);
+
+            InitTabViewStyle();
+
             this.InitializeComponent();
             // 处理标题栏
             var coreTitleBar = CoreApplication.GetCurrentView().TitleBar;
             coreTitleBar.LayoutMetricsChanged += CoreTitleBar_LayoutMetricsChanged;
 
-            Window.Current.SetTitleBar(CustomDragRegion);
+            Window.Current.SetTitleBar(AvailableDragRegion);
 
             //处理页面跳转
             MessageCenter.NavigateToPageEvent += NavigationHelper_NavigateToPageEvent;
@@ -39,9 +50,36 @@ namespace BiliLite
             MessageCenter.ViewImageEvent += MessageCenter_ViewImageEvent;
             MessageCenter.MiniWindowEvent += MessageCenter_MiniWindowEvent;
             MessageCenter.GoBackEvent += MessageCenter_GoBackEvent;
+            MessageCenter.SeekEvent += MessageCenter_SeekEvent;
 
             App.Current.Suspending += Current_Suspending;
             // Window.Current.Content.PointerPressed += Content_PointerPressed;
+
+            Window.Current.CoreWindow.Dispatcher.AcceleratorKeyActivated += Dispatcher_AcceleratorKeyActivated;
+        }
+
+        public event EventHandler MainPageLoaded;
+
+        public object CurrentPage
+        {
+            get
+            {
+                if (!(tabView.SelectedItem is TabViewItem tabItem)) return null;
+                if (!(tabItem.Content is Frame frame)) return null;
+                return frame.Content;
+            }
+        }
+
+        private void Dispatcher_AcceleratorKeyActivated(Windows.UI.Core.CoreDispatcher sender, Windows.UI.Core.AcceleratorKeyEventArgs args)
+        {
+            if (args.EventType.ToString().Contains("Down"))
+            {
+                m_shortcutKeyService.HandleKeyDown(args.VirtualKey);
+            }
+            if (args.EventType.ToString().Contains("Up"))
+            {
+                m_shortcutKeyService.HandleKeyUp(args.VirtualKey);
+            }
         }
 
         private async void Current_Suspending(object sender, Windows.ApplicationModel.SuspendingEventArgs e)
@@ -50,12 +88,20 @@ namespace BiliLite
             var tabs = tabView.TabItems;
             foreach (var tab in tabs)
             {
-                if(!(tab is TabViewItem tabItem))continue;
-                if(!(tabItem.Content is MyFrame frame)) continue;
+                if (!(tab is TabViewItem tabItem)) continue;
+                if (!(tabItem.Content is MyFrame frame)) continue;
                 var page = frame.Content;
-                if(!(page is PlayPage playPage)) continue;
+                if (!(page is PlayPage playPage)) continue;
                 await playPage.ReportHistory();
             }
+        }
+
+        private void MessageCenter_SeekEvent(object sender, double e)
+        {
+            if (!(tabView.SelectedItem is TabViewItem tabItem)) return;
+            if (!(tabItem.Content is Frame frame)) return;
+            if (!(frame.Content is PlayPage playPage)) return;
+            playPage.Seek(e);
         }
 
         private void MessageCenter_GoBackEvent(object sender, EventArgs e)
@@ -73,7 +119,7 @@ namespace BiliLite
             else
             {
                 MiniWindowsTitleBar.Visibility = Visibility.Collapsed;
-                Window.Current.SetTitleBar(CustomDragRegion);
+                Window.Current.SetTitleBar(AvailableDragRegion);
             }
         }
 
@@ -128,6 +174,8 @@ namespace BiliLite
             frame.PointerPressed += Content_PointerPressed;
             frame.Navigate(e.page, e.parameters);
             item.Content = frame;
+            var pageSaveService = App.ServiceProvider.GetRequiredService<PageSaveService>();
+            frame.PageId = pageSaveService.AddPage(e.title, e.page, e.parameters, e.icon);
 
             tabView.TabItems.Add(item);
             if (!e.dontGoTo)
@@ -141,7 +189,6 @@ namespace BiliLite
             {
                 GoBack();
                 e.Handled = true;
-
             }
         }
 
@@ -208,7 +255,13 @@ namespace BiliLite
         private void ClosePage(TabViewItem tabItem)
         {
             var frame = tabItem.Content as MyFrame;
-            ((frame.Content as Page).Content as Grid).Children.Clear();
+            if (frame.Content is Page { Content: Grid grid })
+            {
+                grid.Children.Clear();
+            }
+
+            var pageSaveService = App.ServiceProvider.GetRequiredService<PageSaveService>();
+            pageSaveService.RemovePage(frame.PageId);
 
             frame.Close();
             //frame.Navigate(typeof(BlankPage));
@@ -219,6 +272,9 @@ namespace BiliLite
         }
         private void tabView_Loaded(object sender, RoutedEventArgs e)
         {
+            // 根据Tab高度设置图片视图边距
+            gridViewer.Margin = new Thickness(0, m_viewModel.TabHeight, 0, 0);
+
             var frame = new MyFrame();
 
             frame.Navigate(typeof(HomePage));
@@ -259,18 +315,49 @@ namespace BiliLite
                 ClosePage((TabViewItem)tabView.SelectedItem);
             }
             args.Handled = true;
-
         }
-
-        private void tabView_TabItemsChanged(TabView sender, IVectorChangedEventArgs args)
-        {
-
-        }
-
         private void TabView_OnPreviewKeyDown(object sender, KeyRoutedEventArgs e)
         {
-            if(e.Key == VirtualKey.Space)
+            if (e.Key == VirtualKey.Space && e.OriginalSource.GetType() != typeof(TextBox))
                 e.Handled = true;
+        }
+
+        private void InitTabViewStyle()
+        {
+            var resources = Application.Current.Resources;
+            var dict = resources.MergedDictionaries.FirstOrDefault(x => x.Source.AbsoluteUri.Contains("TabViewStyle"));
+
+            var styleKvp = dict.FirstOrDefault(x => x.Key.ToString().Contains("TabViewItem"));
+
+            if (styleKvp.Value is Style style)
+            {
+                style.Setters.Add(new Setter(TabViewItem.MinWidthProperty, m_viewModel.TabItemMinWidth));
+                style.Setters.Add(new Setter(TabViewItem.MaxWidthProperty, m_viewModel.TabItemMaxWidth));
+                style.Setters.Add(new Setter(TabViewItem.HeightProperty, m_viewModel.TabHeight));
+            }
+
+            var tabStyleKvp = dict.FirstOrDefault(x => x.Key.ToString().Contains("TabViewListView"));
+
+            if (tabStyleKvp.Value is Style tabStyle)
+            {
+                tabStyle.Setters.Add(new Setter(TabViewItem.HeightProperty, m_viewModel.TabHeight));
+            }
+        }
+
+        private void MainPage_OnLoaded(object sender, RoutedEventArgs e)
+        {
+            MainPageLoaded?.Invoke(this, EventArgs.Empty);
+        }
+
+        private void TabView_TabDragCompleted(TabView sender, TabViewTabDragCompletedEventArgs args)
+        {
+            var draggedTabViewItem = args.Tab;
+            var draggedFrame = draggedTabViewItem?.Content as Frame;
+            var draggedPage = draggedFrame.Content as Page;
+            if (draggedPage is IUpdatePivotLayout updateable)
+            {
+                updateable.UpdatePivotLayout();
+            }
         }
     }
 }

@@ -1,5 +1,6 @@
 ﻿using BiliLite.Services;
 using System;
+using BiliLite.Models.Common;
 using BiliLite.Models.Common.UserDynamic;
 
 namespace BiliLite.Models.Requests.Api.User
@@ -33,20 +34,21 @@ namespace BiliLite.Models.Requests.Api.User
             }
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Get,
+                method = HttpMethods.Get,
                 baseUrl = "https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/dynamic_new",
                 parameter = $"type_list={Uri.EscapeDataString(typeList)}&uid={SettingService.Account.UserID}",
             };
             //var api = new ApiModel()
             //{
-            //    method = RestSharp.Method.Get,
+            //    method = HttpMethods.Get,
             //    baseUrl = "https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/space_history",
             //    parameter = $"host_uid={SettingService.Account.UserID}&visitor_uid={SettingService.Account.UserID}",
             //};
             //使用Web的API
             if (SettingService.Account.Logined)
             {
-                api.parameter += $"&access_key={SettingService.Account.AccessKey}";
+                api.parameter += "&";
+                api.parameter += ApiHelper.MustParameter(AppKey, true);
             }
             api.parameter += ApiHelper.GetSign(api.parameter, AppKey);
             return api;
@@ -56,14 +58,16 @@ namespace BiliLite.Models.Requests.Api.User
         {
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Get,
+                method = HttpMethods.Get,
                 baseUrl = "https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/get_dynamic_detail",
                 parameter = $"dynamic_id={id}",
             };
             //使用Web的API
             if (SettingService.Account.Logined)
             {
-                api.parameter += $"&access_key={SettingService.Account.AccessKey}";
+                api.parameter += "&";
+                api.parameter += ApiHelper.MustParameter(AppKey, true);
+                api.parameter += ApiHelper.GetSign(api.parameter, AppKey);
             }
 
             return api;
@@ -72,7 +76,7 @@ namespace BiliLite.Models.Requests.Api.User
         {
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Get,
+                method = HttpMethods.Get,
                 baseUrl = "https://api.vc.bilibili.com/dynamic_repost/v1/dynamic_repost/repost_detail",
                 parameter = $"dynamic_id={id}&offset={offset}",
             };
@@ -107,13 +111,14 @@ namespace BiliLite.Models.Requests.Api.User
 
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Get,
+                method = HttpMethods.Get,
                 baseUrl = $"https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/dynamic_history",
                 parameter = $"offset_dynamic_id={dynamic_id}&type_list={Uri.EscapeDataString(typeList)}&uid={SettingService.Account.UserID}"
             };//使用Web的API
             if (SettingService.Account.Logined)
             {
-                api.parameter += $"&access_key={SettingService.Account.AccessKey}";
+                api.parameter += "&";
+                api.parameter += ApiHelper.MustParameter(AppKey, true);
             }
             api.parameter += ApiHelper.GetSign(api.parameter, AppKey);
             return api;
@@ -123,7 +128,7 @@ namespace BiliLite.Models.Requests.Api.User
         {
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Get,
+                method = HttpMethods.Get,
                 baseUrl = $"https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/space_history",
                 parameter = $"offset_dynamic_id={dynamic_id}&visitor_uid={SettingService.Account.UserID}&host_uid={mid}&need_top=1"
             };
@@ -140,7 +145,7 @@ namespace BiliLite.Models.Requests.Api.User
         {
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Get,
+                method = HttpMethods.Get,
                 baseUrl = $"https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space",
                 parameter = $"offset={offset}&host_mid={mid}",
                 need_cookie = true,
@@ -153,6 +158,20 @@ namespace BiliLite.Models.Requests.Api.User
 
             return api;
         }
+
+        public ApiModel Article(string updateBaseline,string type="article")
+        {
+            var api = new ApiModel()
+            {
+                method = HttpMethods.Get,
+                baseUrl = $"https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/nav",
+                parameter = $"type={type}&update_baseline={updateBaseline}",
+                need_cookie = true,
+            };
+
+            return api;
+        }
+
         /// <summary>
         /// 推荐话题
         /// </summary>
@@ -161,7 +180,7 @@ namespace BiliLite.Models.Requests.Api.User
         {
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Get,
+                method = HttpMethods.Get,
                 baseUrl = "https://api.vc.bilibili.com/topic_svr/v1/topic_svr/get_rcmd_topic",
                 parameter = ApiHelper.MustParameter(AppKey, true),
             };
@@ -178,7 +197,7 @@ namespace BiliLite.Models.Requests.Api.User
         {
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Post,
+                method = HttpMethods.Post,
                 baseUrl = $"https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/create_draw",
                 parameter = ApiHelper.MustParameter(AppKey, true),
                 body = $"uid={SettingService.Account.UserID}&category=3&pictures={Uri.EscapeDataString(imgs)}&description={Uri.EscapeDataString(content)}&content={Uri.EscapeDataString(content)}&setting=%7B%22copy_forbidden%22%3A0%7D&at_uids={Uri.EscapeDataString(at_uids)}&at_control={Uri.EscapeDataString(at_control)}&extension=%7B%22emoji_type%22%3A1%7D"
@@ -195,7 +214,7 @@ namespace BiliLite.Models.Requests.Api.User
         {
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Post,
+                method = HttpMethods.Post,
                 baseUrl = $"https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/create",
                 parameter = ApiHelper.MustParameter(AppKey, true),
                 body = $"uid={SettingService.Account.UserID}&dynamic_id=0&type=4&content={Uri.EscapeDataString(content)}&setting=%7B%22copy_forbidden%22%3A0%7D&at_uids={Uri.EscapeDataString(at_uids)}&at_control={Uri.EscapeDataString(at_control)}&jumpfrom=110&extension=%7B%22emoji_type%22%3A1%7D"
@@ -212,7 +231,7 @@ namespace BiliLite.Models.Requests.Api.User
         {
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Post,
+                method = HttpMethods.Post,
                 baseUrl = $"https://api.vc.bilibili.com/dynamic_repost/v1/dynamic_repost/repost",
                 parameter = ApiHelper.MustParameter(AppKey, true),
                 body = $"uid={SettingService.Account.UserID}&dynamic_id={dynamic_id}&content={Uri.EscapeDataString(content)}&at_uids={Uri.EscapeDataString(at_uids)}&at_control={Uri.EscapeDataString(at_control)}&extension=%7B%22emoji_type%22%3A1%7D"
@@ -231,7 +250,7 @@ namespace BiliLite.Models.Requests.Api.User
         {
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Post,
+                method = HttpMethods.Post,
                 baseUrl = $"https://api.vc.bilibili.com/dynamic_like/v1/dynamic_like/thumb",
                 body = ApiHelper.MustParameter(AppKey, true) + $"&dynamic_id={dynamic_id}&uid={SettingService.Account.UserID}&up={up}"
             };
@@ -247,7 +266,7 @@ namespace BiliLite.Models.Requests.Api.User
         {
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Post,
+                method = HttpMethods.Post,
                 baseUrl = $"https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/rm_dynamic",
                 body = ApiHelper.MustParameter(AppKey, true) + $"&dynamic_id={dynamic_id}"
             };
@@ -264,7 +283,7 @@ namespace BiliLite.Models.Requests.Api.User
         {
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Get,
+                method = HttpMethods.Get,
                 baseUrl = $"https://api.vc.bilibili.com/api/v1/drawImage/upload",
                 parameter = ApiHelper.MustParameter(AppKey, true)
             };

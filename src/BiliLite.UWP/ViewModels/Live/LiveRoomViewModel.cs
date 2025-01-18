@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Timers;
 using System.Windows.Input;
@@ -58,9 +59,12 @@ namespace BiliLite.ViewModels.Live
             m_timer = new Timer(1000);
             m_timerBox = new Timer(1000);
             TimerAutoHideGift = new Timer(1000);
-            m_timer.Elapsed += Timer_Elapsed;
+            m_timer.Elapsed += Timer_LiveTime_Elapsed;
+            m_timer.Elapsed += Timer_SuperChats_Elapsed;
             m_timerBox.Elapsed += Timer_box_Elapsed;
             TimerAutoHideGift.Elapsed += Timer_auto_hide_gift_Elapsed;
+            LotteryViewModel.AddLotteryShieldWord += (_, e) => AddLotteryShieldWord?.Invoke(_, e);
+            LotteryViewModel.AnchorLotteryStart += (_, e) => AnchorLotteryStart?.Invoke(_, e);
             m_messageHandleActionsMap = InitLiveMessageHandleActionMap();
 
             LoadMoreGuardCommand = new RelayCommand(LoadMoreGuardList);
@@ -101,9 +105,21 @@ namespace BiliLite.ViewModels.Live
         public int RoomID { get; set; }
 
         /// <summary>
+        /// 主播uid
+        /// </summary>
+        [DoNotNotify]
+        public long AnchorUid { get; set; }
+
+        /// <summary>
         /// 房间标题
         /// </summary>
         public string RoomTitle { get; set; }
+
+        /// <summary>
+        /// buvid3 用于防止风控
+        /// </summary>
+        [DoNotNotify]
+        public string Buvid3 { get; set; }
 
         [DoNotNotify]
         public ObservableCollection<DanmuMsgModel> Messages { get; set; }
@@ -123,12 +139,15 @@ namespace BiliLite.ViewModels.Live
         [DoNotNotify]
         public bool ReceiveGiftMsg { get; set; } = true;
 
+        [DoNotNotify]
+        public bool ShowLotteryDanmu { get; set; } = true;
+
         public bool ShowGiftMessage { get; set; }
 
         /// <summary>
-        /// 看过的人数(替代人气值)
+        /// 房间在线观众数量与看过的人数(替代人气值)
         /// </summary>
-        public string WatchedNum { get; set; }
+        public string ViewerNumCount { get; set; }
 
         /// <summary>
         /// 舰长数
@@ -154,6 +173,8 @@ namespace BiliLite.ViewModels.Live
         [DoNotNotify]
         public LiveRoomWebUrlQualityDescriptionItemModel CurrentQn { get; set; }
 
+        public ObservableCollection<LiveRoomEmoticonPackage> EmoticonsPackages { get; set; }
+
         public List<LiveRoomWebUrlQualityDescriptionItemModel> Qualites { get; set; }
 
         public List<LiveGiftItem> Gifts { get; set; }
@@ -172,7 +193,7 @@ namespace BiliLite.ViewModels.Live
 
         public LiveAnchorProfile Profile { get; set; }
 
-        public bool Liveing { get; set; }
+        public bool Live { get; set; }
 
         public string LiveTime { get; set; }
 
@@ -182,7 +203,7 @@ namespace BiliLite.ViewModels.Live
         [DoNotNotify]
         public int GuardPage { get; set; } = 1;
 
-        public bool LoadingGuard { get; set; } = true;
+        public bool LoadingGuard { get; set; } = false;
 
         public bool LoadMoreGuard { get; set; }
 
@@ -204,6 +225,16 @@ namespace BiliLite.ViewModels.Live
 
         public string RedPocketSendDanmuBtnText { get; set; } = "一键关注并发送弹幕";
 
+        public string ManualPlayUrl { get; set; } = "";
+
+        [DoNotNotify]
+        public Dictionary<string, string> LotteryDanmu = new Dictionary<string, string> { { "AnchorLottery", "" }, {"RedPocketLottery", ""} };
+
+        /// <summary>
+        /// 有的特殊直播间没有一些娱乐内容. 例如央视新闻直播间.
+        /// </summary>
+        public bool IsSpecialLiveRoom = false;
+
         #endregion
 
         #region Events
@@ -214,11 +245,19 @@ namespace BiliLite.ViewModels.Live
 
         public event EventHandler<DanmuMsgModel> AddNewDanmu;
 
-        public event EventHandler ChatScrollToEnd;
-
         public event EventHandler<LiveRoomEndRedPocketLotteryInfoModel> RedPocketLotteryEnd;
 
-        public event EventHandler<LiveAnchorInfoLiveInfoModel> AnchorLotteryStart;
+        public event EventHandler<LiveRoomAnchorLotteryInfoModel> AnchorLotteryStart;
+
+        public event EventHandler<string> SetManualPlayUrl;
+
+        public event EventHandler<string> AddLotteryShieldWord;
+
+        public event EventHandler<string> DelShieldWord;
+
+        public event EventHandler SpecialLiveRoomHideElements;
+
+        public event EventHandler RefreshGuardNum;
 
         #endregion
 
@@ -238,6 +277,14 @@ namespace BiliLite.ViewModels.Live
             actionMap.RedPocketLotteryEnd += (_, e) =>
             {
                 RedPocketLotteryEnd?.Invoke(this, e);
+            };
+            actionMap.AddShieldWord += (_, e) =>
+            {
+                AddLotteryShieldWord?.Invoke(this, e);
+            };
+            actionMap.DelShieldWord += (_, e) =>
+            {
+                DelShieldWord?.Invoke(this, e);
             };
             return actionMap;
         }
@@ -265,7 +312,6 @@ namespace BiliLite.ViewModels.Live
                 else
                 {
                     HideGiftFlag++;
-                    ChatScrollToEnd?.Invoke(null, null);
                 }
             });
         }
@@ -286,15 +332,15 @@ namespace BiliLite.ViewModels.Live
             //await GetFreeSilverTime();
         }
 
-        private async void Timer_Elapsed(object sender, ElapsedEventArgs e)
+        private async void Timer_LiveTime_Elapsed(object sender, ElapsedEventArgs e)
         {
             try
             {
-                if (LiveInfo == null && !Liveing)
+                if (!Live)
                 {
                     await Windows.ApplicationModel.Core.CoreApplication.MainView.CoreWindow.Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
                     {
-                        LiveTime = "";
+                        LiveTime = "未开播";
                     });
                     return;
                 }
@@ -303,19 +349,6 @@ namespace BiliLite.ViewModels.Live
 
                 await Windows.ApplicationModel.Core.CoreApplication.MainView.CoreWindow.Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
                 {
-                    for (var i = 0; i < SuperChats.Count; i++)
-                    {
-                        var item = SuperChats[i];
-                        if (item.Time <= 0)
-                        {
-                            SuperChats.Remove(item);
-                        }
-                        else
-                        {
-                            item.Time -= 1;
-                        }
-                    }
-
                     LiveTime = ts.ToString(@"hh\:mm\:ss");
                 });
             }
@@ -325,7 +358,26 @@ namespace BiliLite.ViewModels.Live
             }
         }
 
-        private async void ReceiveMessage(int roomId)
+        private async void Timer_SuperChats_Elapsed(object sender, ElapsedEventArgs e)
+        {
+            try
+            {
+                await Windows.ApplicationModel.Core.CoreApplication.MainView.CoreWindow.Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
+                {
+                    for(int i = 0; i < SuperChats.Count; i++)
+                    {
+                        if (SuperChats.ElementAt(i).Time <= 0) SuperChats.RemoveAt(i);
+                        else SuperChats.ElementAt(i).Time -= 1;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn(ex.Message, ex);
+            }
+        }
+
+        private async Task ReceiveMessage(int roomId)
         {
             try
             {
@@ -336,16 +388,12 @@ namespace BiliLite.ViewModels.Live
                 }
                 m_liveMessage ??= new LiveMessage();
 
-                var buvidResults = await m_liveRoomApi.GetBuvid().Request();
-                var buvidData = await buvidResults.GetJson<ApiDataModel<LiveBuvidModel>>();
-                var buvid = buvidData.data.B3;
-
                 var danmuResults = await m_liveRoomApi.GetDanmuInfo(roomId).Request();
                 var danmuData = await danmuResults.GetJson<ApiDataModel<LiveDanmukuInfoModel>>();
                 var token = danmuData.data.Token;
                 var host = danmuData.data.HostList[0].Host;
 
-                await m_liveMessage.Connect(roomId, uid, token, buvid, host, m_cancelSource.Token);
+                await m_liveMessage.Connect(roomId, uid, token, Buvid3, host, m_cancelSource.Token);
             }
             catch (TaskCanceledException)
             {
@@ -427,8 +475,8 @@ namespace BiliLite.ViewModels.Live
                 routeIndex++;
             }
 
-            // 暂时不使用hevc流
-            var codec = codecList.FirstOrDefault(item => item.CodecName == "avc");
+            // 暂时不使用hevc流, 但无法保证avc流一定存在
+            var codec = codecList.Count > 1 ? codecList.FirstOrDefault(item => item.CodecName == "avc") : codecList[0];
 
             var acceptQnList = codec.AcceptQn;
             Qualites ??= liveRoomPlayUrlModel.PlayUrlInfo.PlayUrl.GQnDesc.Where(item => acceptQnList.Contains(item.Qn)).ToList();
@@ -436,6 +484,16 @@ namespace BiliLite.ViewModels.Live
 
             var urlList = codec.UrlInfo.Select(urlInfo => new BasePlayUrlInfo
                 { Url = urlInfo.Host + codec.BaseUrl + urlInfo.Extra, Name = urlInfo.Name }).ToList();
+
+            var regex = new Regex(@"live_\d+_\d+\.flv");
+            foreach (var item in urlList)
+            {
+                if (regex.IsMatch(item.Url)) 
+                {
+                    SetManualPlayUrl?.Invoke(this, item.Url);
+                    break;
+                }
+            }
 
             return urlList;
         }
@@ -448,6 +506,81 @@ namespace BiliLite.ViewModels.Live
         private List<BasePlayUrlInfo> GetFlvPlayUrls(LiveRoomPlayUrlModel liveRoomPlayUrlModel)
         {
             return GetSpecialPlayUrls(liveRoomPlayUrlModel, "http_stream");
+        }
+
+        private async Task<bool> JoinRedPocketLotteryRequest(long uid, int room_id, long ruid, int lot_id)
+        {
+            if (!Logined && !await Notify.ShowLoginDialog())
+            {
+                Notify.ShowMessageToast("请先登录");
+                return false;
+            }
+            try
+            {
+                var result = await m_liveRoomApi.JoinRedPocketLottery(uid, room_id, ruid, lot_id).Request();
+                if (!result.status)
+                {
+                    throw new CustomizedErrorException(result.message);
+                }
+
+                var data = await result.GetData<JObject>();
+                if (!data.success)
+                {
+                    throw new CustomizedErrorException(data.message);
+                }
+
+                if (data.data?["join_status"].ToString().Length > 0 && data.data?["join_status"].ToInt32() == 1) return true;
+                else throw new CustomizedErrorException("未能成功加入红包抽奖");
+            }
+            catch (CustomizedErrorException ex)
+            {
+                Notify.ShowMessageToast(ex.Message);
+                _logger.Error(ex.Message, ex);
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.Log("参加红包抽奖出现错误", LogType.Error, ex);
+                Notify.ShowMessageToast("参加红包抽奖出现错误");
+                return false;
+            }
+        }
+
+        private async Task<bool> JoinAnchorLotteryRequest(int lottery_id, int gift_id, int gift_num)
+        {
+            if (!Logined && !await Notify.ShowLoginDialog())
+            {
+                Notify.ShowMessageToast("请先登录");
+                return false;
+            }
+            try
+            {
+                var result = await m_liveRoomApi.JoinAnchorLottery(RoomID, lottery_id, Buvid3, gift_id, gift_num).Request();
+                if (!result.status)
+                {
+                    throw new CustomizedErrorException(result.message);
+                }
+
+                var data = await result.GetData<JObject>();
+                if (!data.success)
+                {
+                    throw new CustomizedErrorException(data.message);
+                }
+
+                return true;
+            }
+            catch (CustomizedErrorException ex)
+            {
+                Notify.ShowMessageToast(ex.Message);
+                _logger.Error(ex.Message, ex);
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.Log("参加天选抽奖出现错误", LogType.Error, ex);
+                Notify.ShowMessageToast("参加天选抽奖出现错误");
+                return false;
+            }
         }
 
         #endregion
@@ -539,8 +672,10 @@ namespace BiliLite.ViewModels.Live
                 m_liveMessage = new LiveMessage();
                 m_liveMessage.NewMessage += LiveMessage_NewMessage;
                 m_cancelSource = new System.Threading.CancellationTokenSource();
+                m_timer.Start();
 
                 Loading = true;
+
                 var result = await m_liveRoomApi.LiveRoomInfo(id).Request();
                 if (!result.status)
                 {
@@ -553,37 +688,56 @@ namespace BiliLite.ViewModels.Live
                     throw new CustomizedErrorException("加载直播间失败:" + data.message);
                 }
 
-                RoomID = data.data.RoomInfo.RoomId;
-                RoomTitle = data.data.RoomInfo.Title;
-                Liveing = data.data.RoomInfo.LiveStatus == 1;
-                GuardNum = data.data.GuardInfo.Count;
                 LiveInfo = data.data;
+                RoomID = LiveInfo.RoomInfo.RoomId;
+                RoomTitle = LiveInfo.RoomInfo.Title;
+                Live = LiveInfo.RoomInfo.LiveStatus == 1;
+                AnchorUid = LiveInfo.RoomInfo.Uid;
+
+                var buvidResults = await m_liveRoomApi.GetBuvid().Request();
+                var buvidData = await buvidResults.GetJson<ApiDataModel<LiveBuvidModel>>();
+                Buvid3 = buvidData.data.B3;
+
+                if (Live)
+                {
+                    await GetPlayUrls(RoomID, SettingService.GetValue(SettingConstants.Live.DEFAULT_QUALITY, 10000));
+                }
+
+                ReceiveMessage(LiveInfo.RoomInfo.RoomId).RunWithoutAwait(); // 连接弹幕优先级提高
+
+                await GetEmoticons();
+
+                await LoadSuperChat();
+
+                if (LiveInfo.GuardInfo == null)
+                {
+                    IsSpecialLiveRoom = true;
+                    SpecialLiveRoomHideElements?.Invoke(this, null);
+                }
+                else
+                {
+                    GuardNum = !IsSpecialLiveRoom ? LiveInfo.GuardInfo.Count : 0;
+                    await GetGuardList();
+                }
 
                 if (Ranks == null)
                 {
-                    Ranks = new List<LiveRoomRankViewModel>()
-                    {
-                        new LiveRoomRankViewModel(RoomID, data.data.RoomInfo.Uid, "高能用户贡献榜", "contribution-rank"),
-                        new LiveRoomRankViewModel(RoomID, data.data.RoomInfo.Uid, "粉丝榜", "fans"),
-                    };
+                    Ranks =
+                    [
+                        new LiveRoomRankViewModel(RoomID, AnchorUid, "高能用户贡献榜", "contribution-rank"),
+                        new LiveRoomRankViewModel(RoomID, AnchorUid, "粉丝榜", "fans"),
+                    ];
                     SelectRank = Ranks[0];
                 }
 
-
                 await LoadAnchorProfile();
-                if (Liveing)
+
+                //GetFreeSilverTime();  
+                if (ReceiveLotteryMsg)
                 {
-                    m_timer.Start();
-                    await GetPlayUrls(RoomID,
-                        SettingService.GetValue(SettingConstants.Live.DEFAULT_QUALITY, 10000));
-                    //GetFreeSilverTime();  
-                    await LoadSuperChat();
-                    if (ReceiveLotteryMsg)
-                    {
-                        // 抽奖
-                        LotteryViewModel.LoadLotteryInfo(RoomID).RunWithoutAwait();
-                        RedPocketSendDanmuBtnText = Attention ? "一键发送弹幕" : "一键关注并发送弹幕";
-                    }
+                    // 天选抽奖和红包抽奖
+                    LotteryViewModel.LoadLotteryInfo(RoomID).RunWithoutAwait();
+                    RedPocketSendDanmuBtnText = Attention ? "一键发送弹幕" : "一键关注并发送弹幕";
                 }
 
                 await GetRoomGiftList();
@@ -594,8 +748,7 @@ namespace BiliLite.ViewModels.Live
                     await GetTitles();
                 }
 
-                EntryRoom();
-                ReceiveMessage(data.data.RoomInfo.RoomId);
+                await EntryRoom();
             }
             catch (CustomizedErrorException ex)
             {
@@ -653,7 +806,9 @@ namespace BiliLite.ViewModels.Live
                         Price = item.Price,
                         StartTime = item.StartTime,
                         Time = item.Time,
-                        Username = item.UserInfo.Uname
+                        Username = item.UserInfo.Uname,
+                        GuardLevel = item.UserInfo.GuardLevel,
+                        Uid = item.Uid
                     });
                 }
             }
@@ -672,7 +827,7 @@ namespace BiliLite.ViewModels.Live
         /// <summary>
         /// 进入房间
         /// </summary>
-        public async void EntryRoom()
+        public async Task EntryRoom()
         {
             try
             {
@@ -865,6 +1020,7 @@ namespace BiliLite.ViewModels.Live
         /// <returns></returns>
         public async Task GetGuardList()
         {
+            if (IsSpecialLiveRoom) return;
             try
             {
                 LoadingGuard = true;
@@ -873,8 +1029,7 @@ namespace BiliLite.ViewModels.Live
                 if (!result.status) return;
                 var data = await result.GetData<JObject>();
                 if (!data.success) return;
-                var guardNum = data.data["info"]["num"].ToInt32();
-                GuardNum = guardNum; // 更新显示数字
+                GuardNum = data.data["info"]["num"].ToInt32(); //更新舰长数
 
                 var top3 = JsonConvert.DeserializeObject<List<LiveGuardRankItem>>(data.data["top3"].ToString());
                 if (Guards.Count == 0 && top3 != null && top3.Count != 0 && Guards.Count < GuardNum)
@@ -936,6 +1091,7 @@ namespace BiliLite.ViewModels.Live
             Guards?.Clear();
             GuardPage = 1;
             await GetGuardList();
+            RefreshGuardNum?.Invoke(null, null);
         }
 
         public async Task GetFreeSilverTime()
@@ -1069,7 +1225,7 @@ namespace BiliLite.ViewModels.Live
 
         public async Task<bool> SendDanmu(string text)
         {
-            if (!SettingService.Account.Logined && !await Notify.ShowLoginDialog())
+            if (!Logined && !await Notify.ShowLoginDialog())
             {
                 Notify.ShowMessageToast("请先登录");
                 return false;
@@ -1104,8 +1260,154 @@ namespace BiliLite.ViewModels.Live
             }
         }
 
+        public async Task SendDanmu(LiveRoomEmoticon emoji)
+        {
+            if (!Logined && !await Notify.ShowLoginDialog())
+            {
+                Notify.ShowMessageToast("请先登录");
+                return;
+            }
+            if (emoji.Perm != 1)
+            {
+                Notify.ShowMessageToast("权限不足哦~\n" + $"需要: {emoji.UnlockShowText}");
+                return;
+            }
+            try
+            {
+                var result = await m_liveRoomApi.SendDanmu(RoomID, emoji).Request();
+                if (!result.status)
+                {
+                    throw new CustomizedErrorException(result.message);
+                }
+
+                var data = await result.GetData<object>();
+                if (!data.success)
+                {
+                    throw new CustomizedErrorException(data.message);
+                }
+            }
+            catch (CustomizedErrorException ex)
+            {
+                Notify.ShowMessageToast(ex.Message);
+                _logger.Error(ex.Message, ex);
+            }
+            catch (Exception ex)
+            {
+                _logger.Log("发送表情弹幕出现错误", LogType.Error, ex);
+                Notify.ShowMessageToast("发送表情弹幕出现错误");
+            }
+        }
+
+        public async Task<bool> JoinAnchorLottery()
+        {
+            try
+            {
+                if (!Logined)
+                {
+                    throw new CustomizedErrorException("未登录");
+                }
+
+                if (LotteryViewModel == null ||
+                    LotteryViewModel.AnchorLotteryInfo == null ||
+                    string.IsNullOrEmpty(LotteryViewModel.AnchorLotteryInfo.Danmu))
+                {
+                    return false;
+                }
+
+                return await JoinAnchorLotteryRequest(LotteryViewModel.AnchorLotteryInfo.Id, LotteryViewModel.AnchorLotteryInfo.GiftId, LotteryViewModel.AnchorLotteryInfo.GiftNum);
+            }
+            catch (CustomizedErrorException ex)
+            {
+                Notify.ShowMessageToast(ex.Message);
+                _logger.Error(ex.Message, ex);
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.Log("参与天选抽奖出现错误", LogType.Error, ex);
+                Notify.ShowMessageToast("参与天选抽奖出现错误");
+                return false;
+            }
+
+        }
+
+        public async Task<bool> JoinRedPocketLottery()
+        {
+            try
+            {
+                if (!Logined)
+                {
+                    throw new CustomizedErrorException("未登录");
+                }
+
+                if (LotteryViewModel == null ||
+                    LotteryViewModel.RedPocketLotteryInfo == null ||
+                    string.IsNullOrEmpty(LotteryViewModel.RedPocketLotteryInfo.Danmu))
+                {
+                    return false;
+                }
+                // 参与红包抽奖会自动发送弹幕, 不用自己发
+                return await JoinRedPocketLotteryRequest(SettingService.Account.UserID, 
+                                                                   RoomID,
+                                                                   AnchorUid,
+                                                                   LotteryViewModel.RedPocketLotteryInfo.LotteryId.ToInt32());
+            }
+            catch (CustomizedErrorException ex)
+            {
+                Notify.ShowMessageToast(ex.Message);
+                _logger.Error(ex.Message, ex);
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.Log("参与红包抽奖出现错误", LogType.Error, ex);
+                Notify.ShowMessageToast("参与红包抽奖出现错误");
+                return false;
+            }
+
+        }
+
+        public async Task GetEmoticons()
+        {
+            if (!Logined && !await Notify.ShowLoginDialog())
+            {
+                Notify.ShowMessageToast("请先登录");
+                return;
+            }
+            try
+            {
+                var result = await m_liveRoomApi.GetLiveRoomEmoticon(RoomID).Request();
+                if (!result.status) throw new CustomizedErrorException(result.message);
+                var data = await result.GetData<JObject>();
+                if (!data.success) throw new CustomizedErrorException(data.message);
+
+                if (EmoticonsPackages?.Count > 0) EmoticonsPackages?.Clear();
+                EmoticonsPackages = JsonConvert.DeserializeObject<ObservableCollection<LiveRoomEmoticonPackage>>(data.data["data"].ToString());
+            }
+            catch (CustomizedErrorException ex)
+            {
+                Notify.ShowMessageToast(ex.Message);
+                _logger.Error(ex.Message, ex);
+            }
+            catch (Exception ex)
+            {
+                _logger.Log("获取表情包出现错误", LogType.Error, ex);
+                Notify.ShowMessageToast("获取表情包出现错误");
+            }
+        }
+
+        public void CheckClearMessages()
+        {
+            if (Messages.Count >= CleanCount) Messages.RemoveAt(0);
+        }
+
         public void Dispose()
         {
+            foreach (var item in LotteryDanmu)
+            {
+                DelShieldWord?.Invoke(this, item.Value);
+            }
+
             m_cancelSource?.Cancel();
             m_liveMessage?.Dispose();
 

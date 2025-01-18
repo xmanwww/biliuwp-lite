@@ -1,8 +1,11 @@
 ﻿using System;
-using BiliLite.Extensions;
+using System.Collections.Generic;
+using System.Linq;
+using BiliLite.Models.Common;
 using BiliLite.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
+using BiliLite.Models.Common.UserDynamic;
 
 namespace BiliLite.Models.Requests.Api
 {
@@ -43,7 +46,7 @@ namespace BiliLite.Models.Requests.Api
         {
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Get,
+                method = HttpMethods.Get,
                 baseUrl = $"{ApiHelper.API_BASE_URL}/x/v2/reply",
                 parameter = $"oid={oid}&plat=2&pn={pn}&ps={ps}&sort={(int)sort}&type={type}",
                 need_cookie = true,
@@ -73,7 +76,7 @@ namespace BiliLite.Models.Requests.Api
 
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Get,
+                method = HttpMethods.Get,
                 baseUrl = $"{ApiHelper.API_BASE_URL}/x/v2/reply/main",
                 parameter = $"oid={oid}&ps={ps}&mode={mode}&type={type}&csrf={csrf}&pagination_str={paginationStr}",
                 need_cookie = true,
@@ -86,7 +89,7 @@ namespace BiliLite.Models.Requests.Api
         {
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Get,
+                method = HttpMethods.Get,
                 baseUrl = $"{ApiHelper.API_BASE_URL}/x/v2/reply/reply",
                 parameter = $"oid={oid}&plat=2&pn={pn}&ps={ps}&root={root}&type={type}",
                 need_cookie = true,
@@ -100,7 +103,7 @@ namespace BiliLite.Models.Requests.Api
             var csrf = m_cookieService.GetCSRFToken();
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Post,
+                method = HttpMethods.Post,
                 baseUrl = $"{ApiHelper.API_BASE_URL}/x/v2/reply/action",
                 body = $"&oid={oid}&rpid={root}&action={action}&type={type}&csrf={csrf}",
                 need_cookie = true,
@@ -114,7 +117,7 @@ namespace BiliLite.Models.Requests.Api
             var csrf = m_cookieService.GetCSRFToken();
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Post,
+                method = HttpMethods.Post,
                 baseUrl = $"{ApiHelper.API_BASE_URL}/x/v2/reply/add",
                 body = $"&oid={oid}&root={root}&parent={parent}&type={type}&message={message}&csrf={csrf}",
                 need_cookie = true,
@@ -128,7 +131,7 @@ namespace BiliLite.Models.Requests.Api
             var csrf = m_cookieService.GetCSRFToken();
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Post,
+                method = HttpMethods.Post,
                 baseUrl = $"{ApiHelper.API_BASE_URL}/x/v2/reply/del",
                 body = $"&oid={oid}&rpid={rpid}&type={type}&csrf={csrf}",
                 need_cookie = true,
@@ -136,16 +139,61 @@ namespace BiliLite.Models.Requests.Api
             // api.body += ApiHelper.GetSign(api.body, appKey);
             return api;
         }
-        public ApiModel AddComment(string oid, CommentType type, string message)
+
+        public ApiModel AddComment(string oid, CommentType type, string message, List<DynamicPicture> pictures = null)
         {
             var csrf = m_cookieService.GetCSRFToken();
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Post,
+                method = HttpMethods.Post,
                 baseUrl = $"{ApiHelper.API_BASE_URL}/x/v2/reply/add",
                 body = $"&oid={oid}&type={(int)type}&message={Uri.EscapeDataString(message)}&csrf={csrf}",
                 need_cookie = true,
             };
+
+            if (pictures != null && pictures.Any())
+            {
+                var pictureList = new List<object>();
+                foreach (var picture in pictures)
+                {
+                    pictureList.Add(new
+                    {
+                        img_src = picture.ImageUrl,
+                        img_width = picture.ImageWidth,
+                        img_height = picture.ImageHeight,
+                        img_size = picture.ImgSize
+                    });
+                }
+
+                var picturesArgs = JsonConvert.SerializeObject(pictureList);
+                api.body += $"&pictures={picturesArgs}";
+            }
+
+            //api.body += ApiHelper.GetSign(api.body, appKey);
+            return api;
+        }
+
+        public ApiModel UploadDraw(UploadFileInfo file, string biz = "new_dyn")
+        {
+            var csrf = m_cookieService.GetCSRFToken();
+            var api = new ApiModel()
+            {
+                method = HttpMethods.Post,
+                baseUrl = $"{ApiHelper.API_BASE_URL}/x/dynamic/feed/draw/upload_bfs",
+                FormData = new Dictionary<string, object>()
+                {
+                    { "file_up", file },
+                    { "biz", biz },
+                    { "csrf", csrf }
+                },
+                need_cookie = true,
+            };
+
+            if (biz == "new_dyn")
+            {
+                api.FormData.Add("category", "daily");
+            }
+
             //api.body += ApiHelper.GetSign(api.body, appKey);
             return api;
         }

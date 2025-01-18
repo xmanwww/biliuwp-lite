@@ -27,14 +27,12 @@ namespace BiliLite.Modules
         private static readonly ILogger _logger = GlobalLogger.FromCurrentType();
 
         private readonly CookieService m_cookieService;
-        private SettingVM settingVM;
         public AccountApi accountApi;
         string guid = "";
         public Account()
         {
             m_cookieService = App.ServiceProvider.GetRequiredService<CookieService>();
             accountApi = new AccountApi();
-            settingVM = new SettingVM();
             guid = Guid.NewGuid().ToString();
         }
         public async Task<string> EncryptedPassword(string passWord)
@@ -110,6 +108,7 @@ namespace BiliLite.Modules
                             Value = cookieItem.value,
                         }));
                         m_cookieService.Cookies = cookies;
+                        // await m_cookieService.CheckCookieKeys();
                     }
                     //执行SSO
                     //await accountApi.SSO(access_key).Request();
@@ -237,6 +236,7 @@ namespace BiliLite.Modules
         public async void LoginByCookie(List<HttpCookieItem> cookies, string refreshToken)
         {
             m_cookieService.Cookies = cookies;
+            // await m_cookieService.CheckCookieKeys();
             var appKey = SettingConstants.Account.DefaultLoginAppKeySecret;
             var cookieToAccessKeyConfirmUrl = await GetCookieToAccessKeyConfirmUrl(appKey);
             var accessKey = await GetAccessKey(cookieToAccessKeyConfirmUrl);
@@ -444,6 +444,8 @@ namespace BiliLite.Modules
                 if (req.status)
                 {
                     var obj = req.GetJObject();
+                    var refresh = obj["data"]?.Value<bool>("refresh");
+                    _logger.Info("CheckLoginState need refresh:" + refresh);
                     return obj["code"].ToInt32() == 0;
                 }
                 else
@@ -469,6 +471,7 @@ namespace BiliLite.Modules
             {
                 var appKey = SettingService.Account.GetLoginAppKeySecret();
                 var req = await accountApi.RefreshToken(appKey).Request();
+                // TODO: 检查该接口是否会返回刷新的Cookie
 
                 if (req.status)
                 {
@@ -504,8 +507,8 @@ namespace BiliLite.Modules
         /// <returns></returns>
         public async Task CheckUpdateCookies()
         {
-            if (!SettingService.GetValue(SettingConstants.Account.IS_WEB_LOGIN, false)) return;
             var checkResult = await CheckCookies();
+            if (!SettingService.GetValue(SettingConstants.Account.IS_WEB_LOGIN, false)) return;
             if (!checkResult.Refresh)
             {
                 return;
@@ -530,6 +533,7 @@ namespace BiliLite.Modules
             var api = new AccountApi().CheckCookies();
             var result = await api.Request();
             var checkCookieResult = await result.GetData<CheckCookieResult>();
+            _logger.Info($"检查Cookie结果:{checkCookieResult.data.Refresh}");
             return checkCookieResult.data;
         }
 

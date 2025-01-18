@@ -1,28 +1,24 @@
-﻿using BiliLite.Modules;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Runtime.InteropServices.WindowsRuntime;
-using Windows.Foundation;
-using Windows.Foundation.Collections;
-using Windows.Storage;
-using Windows.System;
-using Windows.UI.Xaml;
-using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Controls.Primitives;
-using Windows.UI.Xaml.Data;
-using Windows.UI.Xaml.Input;
-using Windows.UI.Xaml.Media;
-using Windows.UI.Xaml.Navigation;
-using BiliLite.Extensions;
-using BiliLite.Services;
+﻿using BiliLite.Extensions;
 using BiliLite.Models.Common;
 using BiliLite.Models.Common.Download;
 using BiliLite.Models.Common.Video;
 using BiliLite.Models.Common.Video.PlayUrlInfos;
+using BiliLite.Pages.Other;
+using BiliLite.Services;
+using BiliLite.Services.Interfaces;
 using BiliLite.ViewModels.Download;
 using Microsoft.Extensions.DependencyInjection;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using Windows.Storage;
+using Windows.System;
+using Windows.UI.Xaml;
+using Windows.UI.Xaml.Controls;
+using Windows.UI.Xaml.Navigation;
 
 // https://go.microsoft.com/fwlink/?LinkId=234238 上介绍了“空白页”项模板
 
@@ -31,25 +27,42 @@ namespace BiliLite.Pages
     /// <summary>
     /// 可用于自身或导航至 Frame 内部的空白页。
     /// </summary>
-    public sealed partial class DownloadPage : BasePage
+    public sealed partial class DownloadPage : BasePage, IRefreshablePage, IUpdatePivotLayout
     {
         private static readonly ILogger logger = GlobalLogger.FromCurrentType();
         private readonly DownloadPageViewModel m_viewModel;
+        private readonly DownloadService m_downloadService;
+        private readonly ComboBoxItemData<DownloadedSortMode>[] m_sortOptions = new ComboBoxItemData<DownloadedSortMode>[]
+        {
+            new() { Text = "默认", Value = DownloadedSortMode.Default },
+            new() { Text = "时间倒序", Value = DownloadedSortMode.TimeDesc },
+            new() { Text = "时间顺序", Value = DownloadedSortMode.TimeAsc },
+            new() { Text = "标题顺序", Value = DownloadedSortMode.TitleAsc },
+            new() { Text = "标题倒序", Value = DownloadedSortMode.TitleDesc },
+        };
 
         public DownloadPage()
         {
             m_viewModel = App.ServiceProvider.GetRequiredService<DownloadPageViewModel>();
+            m_downloadService = App.ServiceProvider.GetRequiredService<DownloadService>();
             this.InitializeComponent();
             Title = "下载";
+            if (!m_viewModel.Downloadings.Any())
+            {
+                pivot.SelectedIndex = 1;
+            }
         }
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {
             base.OnNavigatedTo(e);
-            if (e.NavigationMode == NavigationMode.New)
-            {
-                m_viewModel.RefreshDownloaded();
-            }
         }
+
+        public async Task Refresh()
+        {
+            CbSortMode.SelectedIndex = 0;
+            m_downloadService.RefreshDownloaded();
+        }
+
         private void listDowned_ItemClick(object sender, ItemClickEventArgs e)
         {
             var data = e.ClickedItem as DownloadedItem;
@@ -173,9 +186,10 @@ namespace BiliLite.Pages
             }
             try
             {
-                var folder = await StorageFolder.GetFolderFromPathAsync(item.Path);
+                var folder = await StorageFolder.GetFolderFromPathAsync(item.FilePath);
                 await folder.DeleteAsync(StorageDeleteOption.PermanentDelete);
                 data.Epsidoes.Remove(item);
+                m_downloadService.RemoveDbSubItem(item.CID);
             }
             catch (Exception ex)
             {
@@ -187,7 +201,7 @@ namespace BiliLite.Pages
         private async void btnEpisodesFolder_Click(object sender, RoutedEventArgs e)
         {
             var item = (sender as AppBarButton).DataContext as DownloadedSubItem;
-            await Launcher.LaunchFolderPathAsync(item.Path);
+            await Launcher.LaunchFolderPathAsync(item.FilePath);
         }
 
         private void btnMenuPlay_Click(object sender, RoutedEventArgs e)
@@ -235,6 +249,7 @@ namespace BiliLite.Pages
                 var folder = await StorageFolder.GetFolderFromPathAsync(data.Path);
                 await folder.DeleteAsync(StorageDeleteOption.PermanentDelete);
                 m_viewModel.DownloadedViewModels.Remove(data);
+                m_downloadService.RemoveDbItem(data.ID);
             }
             catch (Exception ex)
             {
@@ -247,7 +262,18 @@ namespace BiliLite.Pages
 
         private async void btnMerge_Click(object sender, RoutedEventArgs e)
         {
-            await Launcher.LaunchUriAsync(new Uri("https://iliili.cn/index.php/bili-merge.html"));
+            MessageCenter.NavigateToPage(null, new NavigationInfo()
+            {
+                icon = Symbol.Video,
+                page = typeof(MarkdownViewerPage),
+                title = "BiliLite导出视频",
+                parameters = new MarkdownViewerPagerParameter()
+                {
+                    Type = MarkdownViewerPagerParameterType.Link,
+                    Value = "ms-appx:///Assets/Text/bili-merge.md",
+                },
+                dontGoTo = false,
+            });
         }
 
         private void btnEpisodesOutput_Click(object sender, RoutedEventArgs e)
@@ -284,11 +310,11 @@ namespace BiliLite.Pages
                 try
                 {
                     var toSimplified = SettingService.GetValue<bool>(SettingConstants.Roaming.TO_SIMPLIFIED, true);
-                    var folder = await StorageFolder.GetFolderFromPathAsync(item.Path);
+                    var folder = await StorageFolder.GetFolderFromPathAsync(item.FilePath);
                     foreach (var subtitle in item.SubtitlePath)
                     {
                         var outSrtFile = await folder.CreateFileAsync(subtitle.Name + ".srt", CreationCollisionOption.ReplaceExisting);
-                        var subtitleFile = await StorageFile.GetFileFromPathAsync(Path.Combine(item.Path, subtitle.Url));
+                        var subtitleFile = await StorageFile.GetFileFromPathAsync(Path.Combine(item.FilePath, subtitle.Url));
                         var content = await FileIO.ReadTextAsync(subtitleFile);
                         var result = content.CcConvertToSrt(toSimplified && subtitle.Name.Contains("繁体"));
                         await FileIO.WriteTextAsync(outSrtFile, result);
@@ -307,7 +333,8 @@ namespace BiliLite.Pages
             savePicker.SuggestedStartLocation =
                 Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary;
             savePicker.FileTypeChoices.Add("MP4", new List<string>() { ".mp4" });
-            savePicker.SuggestedFileName = "导出的视频";
+            var fileName = Regex.Replace(data.Title + "-" + item.Title, "[<>/\\\\|:\":?*]", "");
+            savePicker.SuggestedFileName = fileName;
             var file = await savePicker.PickSaveFileAsync();
             if (file == null)
                 return;
@@ -318,8 +345,41 @@ namespace BiliLite.Pages
         private void SearchBox_OnQuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
         {
             var keyword = sender.Text;
-            m_viewModel.SearchDownloaded(keyword);
-            DownloadPivot.SelectedIndex = 1;
+            m_downloadService.SearchDownloaded(keyword);
+            pivot.SelectedIndex = 1;
+        }
+
+        private void BtnPauseSubItem_OnClick(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button { DataContext: DownloadingSubItemViewModel item })
+            {
+                m_downloadService.PauseItem(item);
+            }
+        }
+
+        private void BtnResumeSubItem_OnClick(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button { DataContext: DownloadingSubItemViewModel item })
+            {
+                m_downloadService.ResumeItem(item);
+            }
+        }
+
+        private void BtnClearSearch_OnClick(object sender, RoutedEventArgs e)
+        {
+            m_downloadService.SearchDownloaded("");
+            pivot.SelectedIndex = 1;
+        }
+
+        private void SortOptions_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            m_downloadService.SetDownloadedSortMode((DownloadedSortMode)CbSortMode.SelectedValue);
+        }
+
+        public void UpdatePivotLayout()
+        {
+            pivot.UseLayoutRounding = !pivot.UseLayoutRounding;
+            pivot.UseLayoutRounding = !pivot.UseLayoutRounding;
         }
     }
 }

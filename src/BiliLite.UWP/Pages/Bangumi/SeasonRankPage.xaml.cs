@@ -1,7 +1,10 @@
 ﻿using BiliLite.Extensions;
 using BiliLite.Models.Common;
-using BiliLite.Modules.Season;
+using BiliLite.Models.Common.Season;
 using BiliLite.Services;
+using BiliLite.Services.Interfaces;
+using BiliLite.ViewModels.Season;
+using Microsoft.Extensions.DependencyInjection;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
@@ -14,15 +17,16 @@ namespace BiliLite.Pages.Bangumi
     /// <summary>
     /// 可用于自身或导航至 Frame 内部的空白页。
     /// </summary>
-    public sealed partial class SeasonRankPage : BasePage
+    public sealed partial class SeasonRankPage : BasePage, IUpdatePivotLayout
     {
-        readonly SeasonRankVM seasonRankVM;
+        readonly SeasonRankViewModel m_viewModel;
+
         public SeasonRankPage()
         {
+            m_viewModel = App.ServiceProvider.GetRequiredService<SeasonRankViewModel>();
             this.InitializeComponent();
             Title = "热门榜单";
             this.NavigationCacheMode = NavigationCacheMode.Enabled;
-            seasonRankVM = new SeasonRankVM();
         }
 
         protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -30,7 +34,7 @@ namespace BiliLite.Pages.Bangumi
             base.OnNavigatedTo(e);
             if (e.NavigationMode == NavigationMode.New)
             {
-                 seasonRankVM.LoadRankRegion((int)e.Parameter);
+                m_viewModel.LoadRankRegion((int)e.Parameter);
             }
         }
 
@@ -40,10 +44,10 @@ namespace BiliLite.Pages.Bangumi
             {
                 return;
             }
-            var data = pivot.SelectedItem as SeasonRankModel;
+            var data = pivot.SelectedItem as SeasonRankDataViewModel;
             if (data.Items == null || data.Items.Count == 0)
             {
-                await seasonRankVM.LoadRankDetail(data);
+                await m_viewModel.LoadRankDetail(data);
             }
         }
 
@@ -54,8 +58,8 @@ namespace BiliLite.Pages.Bangumi
             {
                 icon = Symbol.Play,
                 page = typeof(SeasonDetailPage),
-                title = item.title,
-                parameters = item.season_id,
+                title = item.Title,
+                parameters = item.SeasonId,
                 dontGoTo = dontGoTo
             });
         }
@@ -72,6 +76,12 @@ namespace BiliLite.Pages.Bangumi
             var element = e.OriginalSource as FrameworkElement;
             var item = element.DataContext as SeasonRankItemModel;
             SeasonRankItemOpen(sender, item, true);
+        }
+
+        public void UpdatePivotLayout()
+        {
+            pivot.UseLayoutRounding = !pivot.UseLayoutRounding;
+            pivot.UseLayoutRounding = !pivot.UseLayoutRounding;
         }
     }
 }

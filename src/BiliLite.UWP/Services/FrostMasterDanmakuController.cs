@@ -31,6 +31,8 @@ namespace BiliLite.Services
             };
         }
 
+        public bool IsShow => DanmakuViewModel.IsHide;
+
         public override void Init(UserControl danmakuElement)
         {
             m_danmakuCanvas = danmakuElement as CanvasAnimatedControl;
@@ -90,6 +92,11 @@ namespace BiliLite.Services
             m_danmakuMaster.SetLayerRenderState(DanmakuDefaultLayerDef.RollingLayerId, true);
         }
 
+        public override void SetFont(string fontName)
+        {
+            m_danmakuMaster.SetFontFamilyName(fontName);
+        }
+
         public override void SetFontZoom(double fontZoom)
         {
             base.SetFontZoom(fontZoom);
@@ -143,7 +150,18 @@ namespace BiliLite.Services
         public override void Add(BiliDanmakuItem danmakuItem, bool owner)
         {
             var realDanmakuItem = m_mapper.Map<DanmakuItem>(danmakuItem);
+            if (owner) realDanmakuItem.HasBorder = true;
             m_danmakuMaster.AddRealtimeDanmaku(realDanmakuItem, false);
+        }
+
+        public override void AddLiveDanmaku(string text, bool owner, Color color)
+        {
+            Add(new BiliDanmakuItem()
+            {
+                Color = color,
+                Text = text,
+                Size = 25,
+            }, owner);
         }
 
         public override void Pause()

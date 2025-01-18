@@ -1,4 +1,6 @@
-﻿using BiliLite.Services;
+﻿using System.Threading.Tasks;
+using BiliLite.Models.Common;
+using BiliLite.Services;
 
 namespace BiliLite.Models.Requests.Api
 {
@@ -8,7 +10,7 @@ namespace BiliLite.Models.Requests.Api
         //{
         //    var api = new ApiModel()
         //    {
-        //        method = RestSharp.Method.Get,
+        //        method = HttpMethods.Get,
         //        baseUrl = $"{ApiHelper.baseUrl}/api/rank/RankRegion"
         //    };
         //    return api;
@@ -19,14 +21,19 @@ namespace BiliLite.Models.Requests.Api
         /// <param name="rid">分区ID</param>
         /// <param name="type">all=全站，origin=原创，rookie=新人</param>
         /// <returns></returns>
-        public ApiModel Rank(int rid, string type)
+        public async Task<ApiModel> Rank(int rid, string type)
         {
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Get,
+                method = HttpMethods.Get,
                 baseUrl = $"{ApiHelper.API_BASE_URL}/x/web-interface/ranking/v2",
-                parameter = $"rid={rid}&type={type}"
+                parameter = $"rid={rid}&type={type}",
             };
+            if (SettingService.Account.Logined)
+            {
+                api.need_cookie = true;
+            }
+            api.parameter = await ApiHelper.GetWbiSign(api.parameter);
             return api;
         }
 
@@ -39,7 +46,7 @@ namespace BiliLite.Models.Requests.Api
         {
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Get,
+                method = HttpMethods.Get,
                 baseUrl = $"{ApiHelper.API_BASE_URL}/pgc/season/rank/list",
                 parameter = $"season_type={type}"
             };

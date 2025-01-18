@@ -23,6 +23,8 @@ namespace BiliLite.Controls
         }
         public bool CanLoadMore { get; set; } = false;
 
+        public double ScrollPosition => scrollViewer.VerticalOffset;
+
         public double LoadMoreBottomOffset
         {
             get { return Convert.ToDouble(GetValue(LoadMoreBottomOffsetProperty)); }
@@ -57,7 +59,7 @@ namespace BiliLite.Controls
         {
             scrollViewer=GetTemplateChild("ScrollViewer") as ScrollViewer;
             scrollViewer.ViewChanged += ScrollViewer_ViewChanged;
-            this.RegisterPropertyChangedCallback(LoadingProperty, new DependencyPropertyChangedCallback((obj,e)=> {
+            RegisterPropertyChangedCallback(LoadingProperty, new DependencyPropertyChangedCallback((obj,e)=> {
                 if( !Loading)
                 {
                     if (scrollViewer.ScrollableHeight == 0)
@@ -87,6 +89,18 @@ namespace BiliLite.Controls
                 LoadMoreCommand?.Execute(null);
             }
            
+        }
+
+        public void ScrollTo(double offset)
+        {
+            scrollViewer.ScrollToVerticalOffset(offset);
+        }
+
+        public async Task ScrollRecover()
+        {
+            var position = ScrollPosition;
+            await Task.Delay(50);
+            ScrollTo(position);
         }
     }
 }

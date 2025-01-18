@@ -1,91 +1,75 @@
 ﻿using BiliLite.Extensions;
 using BiliLite.Models.Common;
-using BiliLite.Modules;
+using BiliLite.Models.Common.Search;
 using BiliLite.Services;
+using BiliLite.Services.Biz;
+using BiliLite.Services.Interfaces;
+using BiliLite.ViewModels.Search;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml.Controls;
+using Newtonsoft.Json;
+using System.Linq;
+using System.Threading.Tasks;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
+using Windows.UI.Xaml.Controls.Primitives;
 using Windows.UI.Xaml.Input;
+using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Navigation;
 
 // https://go.microsoft.com/fwlink/?LinkId=234238 上介绍了“空白页”项模板
 
 namespace BiliLite.Pages
 {
-    public enum SearchType
-    {
-        /// <summary>
-        /// 视频
-        /// </summary>
-        Video = 0,
-        /// <summary>
-        /// 番剧
-        /// </summary>
-        Anime = 1,
-        /// <summary>
-        /// 直播
-        /// </summary>
-        Live = 2,
-        /// <summary>
-        /// 主播
-        /// </summary>
-        Anchor = 3,
-        /// <summary>
-        /// 用户
-        /// </summary>
-        User = 4,
-        /// <summary>
-        /// 影视
-        /// </summary>
-        Movie = 5,
-        /// <summary>
-        /// 专栏
-        /// </summary>
-        Article = 6,
-        /// <summary>
-        /// 话题
-        /// </summary>
-        Topic = 7
-    }
-    public class SearchParameter
-    {
-        public string keyword { get; set; }
-        public SearchType searchType { get; set; } = SearchType.Video;
-    }
     /// <summary>
     /// 可用于自身或导航至 Frame 内部的空白页。
     /// </summary>
-    public sealed partial class SearchPage : BasePage
+    public sealed partial class SearchPage : BasePage, IRefreshablePage, IUpdatePivotLayout
     {
-        SearchVM searchVM;
+        private readonly SearchService m_searchService;
+        private readonly SearchPageViewModel m_viewModel;
+
         public SearchPage()
         {
+            NavigationCacheMode = NavigationCacheMode.Required;
+            m_searchService = App.ServiceProvider.GetRequiredService<SearchService>();
+            m_viewModel = App.ServiceProvider.GetRequiredService<SearchPageViewModel>();
+            m_viewModel.Init(m_searchService.PivotIndexCache = 0, m_searchService.ComboIndexCache = 0);
             this.InitializeComponent();
-            Title = "搜索";
-            searchVM = new SearchVM();
         }
+
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {
+            CompositionTarget.Rendered += CompositionTarget_Rendered; // 订阅页面加载后事件
             base.OnNavigatedTo(e);
             SearchParameter par = new SearchParameter();
-            if (e.Parameter is SearchParameter)
+            if (e.Parameter is string)
             {
-                par = e.Parameter as SearchParameter;
+                par.Keyword = e.Parameter.ToString();
             }
             else
             {
-                par.keyword = e.Parameter.ToString();
+                par = e.Parameter as SearchParameter;
+                if (par == null)
+                {
+                    par = JsonConvert.DeserializeObject<SearchParameter>(JsonConvert.SerializeObject(e.Parameter));
+                }
             }
-            par.keyword = par.keyword.TrimStart('@');
-            txtKeyword.Text = par.keyword;
-            foreach (var item in searchVM.SearchItems)
-            {
-                item.Keyword = par.keyword;
-                item.Area = searchVM.Area.area;
-            }
-            pivot.SelectedIndex = (int)par.searchType;
-        }
 
+            par.Keyword = par.Keyword.TrimStart('@');
+            txtKeyword.Text = par.Keyword;
+            foreach (var item in m_viewModel.SearchItems)
+            {
+                item.Keyword = par.Keyword;
+                item.Area = m_viewModel.Area.area;
+            }
+        }
+        private void CompositionTarget_Rendered(object sender, RenderedEventArgs e)
+        {
+            txtKeyword.Focus(FocusState.Keyboard);
+            Title = "搜索";
+            CompositionTarget.Rendered -= CompositionTarget_Rendered;
+        }
         private async void txtKeyword_QuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
         {
             var queryText = args.QueryText;
@@ -100,14 +84,14 @@ namespace BiliLite.Pages
                 return;
             }
             queryText = queryText.TrimStart('@');
-            foreach (var item in searchVM.SearchItems)
+            foreach (var item in m_viewModel.SearchItems)
             {
                 item.Keyword = queryText;
-                item.Area = searchVM.Area.area;
+                item.Area = m_viewModel.Area.area;
                 item.Page = 1;
                 item.HasData = false;
             }
-            searchVM.SelectItem.Refresh();
+            m_viewModel.SelectItem.Refresh();
             ChangeTitle("搜索:" + queryText);
         }
 
@@ -129,7 +113,8 @@ namespace BiliLite.Pages
         {
             if (pivot.SelectedItem != null)
             {
-                var item = pivot.SelectedItem as ISearchVM;
+                m_searchService.PivotIndexCache = pivot.SelectedIndex;
+                var item = pivot.SelectedItem as ISearchPivotViewModel;
                 if (!item.HasData && !item.Loading)
                 {
                     await item.LoadData();
@@ -140,7 +125,7 @@ namespace BiliLite.Pages
 
         private void ComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            var data = (sender as ComboBox).DataContext as ISearchVM;
+            var data = (sender as ComboBox).DataContext as ISearchPivotViewModel;
             if (data.HasData && !data.Loading)
             {
                 data.Refresh();
@@ -245,13 +230,14 @@ namespace BiliLite.Pages
         {
             if (cbArea.SelectedItem != null)
             {
-                foreach (var item in searchVM.SearchItems)
+                m_searchService.ComboIndexCache = cbArea.SelectedIndex;
+                foreach (var item in m_viewModel.SearchItems)
                 {
-                    item.Area = searchVM.Area.area;
+                    item.Area = m_viewModel.Area.area;
                     item.Page = 1;
                     item.HasData = false;
                 }
-                searchVM.SelectItem.Refresh();
+                m_viewModel.SelectItem.Refresh();
             }
         }
 
@@ -259,51 +245,41 @@ namespace BiliLite.Pages
         {
             if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput) return;
             var text = sender.Text;
-            var suggestSearchContents = await new SearchService().GetSearchSuggestContents(text);
-            if (searchVM.SuggestSearchContents == null)
+            text = text.TrimEnd();
+            if (string.IsNullOrWhiteSpace(text)) return;
+            var suggestSearchContents = await m_searchService.GetSearchSuggestContents(text);
+            if (m_viewModel.SuggestSearchContents == null)
             {
-                searchVM.SuggestSearchContents = new System.Collections.ObjectModel.ObservableCollection<string>(suggestSearchContents);
+                m_viewModel.SuggestSearchContents = new System.Collections.ObjectModel.ObservableCollection<string>(suggestSearchContents);
             }
             else
             {
-                searchVM.SuggestSearchContents.ReplaceRange(suggestSearchContents);
+                m_viewModel.SuggestSearchContents.ReplaceRange(suggestSearchContents);
             }
         }
-    }
-    public class SearchDataTemplateSelector : DataTemplateSelector
-    {
-        public DataTemplate VideoTemplate { get; set; }
-        public DataTemplate AnimeTemplate { get; set; }
-        public DataTemplate TestTemplate { get; set; }
-        public DataTemplate LiveRoomTemplate { get; set; }
-        public DataTemplate UserTemplate { get; set; }
-        public DataTemplate ArticTemplate { get; set; }
-        public DataTemplate TopicTemplate { get; set; }
-        protected override DataTemplate SelectTemplateCore(object item, DependencyObject container)
+
+        public async Task Refresh()
         {
-            var data = item as ISearchVM;
-            switch (data.SearchType)
-            {
-                case SearchType.Video:
-                    return VideoTemplate;
-                case SearchType.Anime:
-                case SearchType.Movie:
-                    return AnimeTemplate;
-                case SearchType.User:
-                    return UserTemplate;
-                case SearchType.Live:
-                    return LiveRoomTemplate;
-                case SearchType.Article:
-                    return ArticTemplate;
-                case SearchType.Topic:
-                    return TopicTemplate;
-                case SearchType.Anchor:
-                    return TestTemplate;
-                default:
-                    return TestTemplate;
-            }
+            if (!(pivot.SelectedItem is ISearchPivotViewModel searchVm)) return;
+            searchVm.Refresh();
+        }
 
+        private void UpdateSize()
+        {
+            m_viewModel.PageWidth = ActualWidth;
+            m_viewModel.PivotHeaderWidth =
+                pivot.FindChildrenByType<PivotHeaderItem>().Select(x => x.ActualWidth).Sum();
+        }
 
+        private void SearchPage_OnSizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            UpdateSize();
+        }
+
+        public void UpdatePivotLayout()
+        {
+            pivot.UseLayoutRounding = !pivot.UseLayoutRounding;
+            pivot.UseLayoutRounding = !pivot.UseLayoutRounding;
         }
     }
 }

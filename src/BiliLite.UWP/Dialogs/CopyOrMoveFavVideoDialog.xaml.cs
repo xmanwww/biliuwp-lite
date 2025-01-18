@@ -1,6 +1,5 @@
 ﻿using BiliLite.Models;
 using BiliLite.Models.Requests.Api.User;
-using BiliLite.Modules;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
@@ -8,7 +7,9 @@ using System.Linq;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using BiliLite.Extensions;
+using BiliLite.Models.Common.Favorites;
 using BiliLite.Models.Responses;
+using BiliLite.ViewModels.User;
 
 // https://go.microsoft.com/fwlink/?LinkId=234238 上介绍了“内容对话框”项模板
 
@@ -39,19 +40,19 @@ namespace BiliLite.Dialogs
             {
                 IsPrimaryButtonEnabled = false;
                 HttpResults results;
-                var item = listView.SelectedItem as FavoriteItemModel;
+                var item = listView.SelectedItem as FavoriteItemViewModel;
                 List<string> ids = new List<string>();
                 foreach (var videoItem in selectItems)
                 {
-                    ids.Add(videoItem.id);
+                    ids.Add(videoItem.Id);
                 }
                 if (isMove)
                 {
-                    results = await favoriteApi.Move(fid, item.id, ids).Request();
+                    results = await favoriteApi.Move(fid, item.Id, ids).Request();
                 }
                 else
                 {
-                    results = await favoriteApi.Copy(fid, item.id, ids, mid).Request();
+                    results = await favoriteApi.Copy(fid, item.Id, ids, mid).Request();
                 }
                 if (results.status)
                 {
@@ -103,8 +104,8 @@ namespace BiliLite.Dialogs
                     {
                         if (data.data[0]["mediaListResponse"] != null)
                         {
-                            var list = await data.data[0]["mediaListResponse"]["list"].ToString().DeserializeJson<List<FavoriteItemModel>>();
-                            listView.ItemsSource = list.Where(x => x.id != fid).ToList();
+                            var list = await data.data[0]["mediaListResponse"]["list"].ToString().DeserializeJson<List<FavoriteItemViewModel>>();
+                            listView.ItemsSource = list.Where(x => x.Id != fid).ToList();
                         }
                     }
                     else

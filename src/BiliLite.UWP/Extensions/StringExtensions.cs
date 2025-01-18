@@ -4,6 +4,7 @@ using System;
 using BiliLite.Models.Common;
 using Newtonsoft.Json.Linq;
 using System.Collections.Generic;
+using System.IO;
 using System.Text.RegularExpressions;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Documents;
@@ -16,6 +17,9 @@ using Windows.Security.Cryptography;
 using Windows.Storage.Streams;
 using System.Threading.Tasks;
 using System.Linq;
+using System.Runtime.InteropServices.WindowsRuntime;
+using System.Xml;
+using BiliLite.Models.Exceptions;
 
 namespace BiliLite.Extensions
 {
@@ -80,7 +84,9 @@ namespace BiliLite.Extensions
         /// <param name="txt"></param>
         /// <param name="emote"></param>
         /// <returns></returns>
-        public static RichTextBlock ToRichTextBlock(this string txt, JObject emote, bool isLive = false, string fontColor = null, string fontWeight = "Normal",string lowProfilePrefix="")
+        public static RichTextBlock ToRichTextBlock(this string txt, JObject emote, bool isLive = false,
+            string fontColor = null, string fontWeight = "Normal", string lowProfilePrefix = "",
+            string textAlignment = "Left", bool enableVideoSeekTime = false)
         {
             var input = txt;
             try
@@ -98,6 +104,12 @@ namespace BiliLite.Extensions
 
                     //处理链接
                     if (!isLive) { input = HandelUrl(input); }
+
+                    //处理时间坐标
+                    if (enableVideoSeekTime)
+                    {
+                        input = HandleTimeSeek(input);
+                    }
                     
                     //处理表情
                     input = !isLive ? HandelEmoji(input, emote) : HandleLiveEmoji(input, emote);
@@ -114,12 +126,17 @@ namespace BiliLite.Extensions
                     var xaml = string.Format(@"<RichTextBlock HorizontalAlignment=""Stretch"" xmlns=""http://schemas.microsoft.com/winfx/2006/xaml/presentation""
                                             xmlns:x=""http://schemas.microsoft.com/winfx/2006/xaml"" xmlns:d=""http://schemas.microsoft.com/expression/blend/2008""
                                             xmlns:mc = ""http://schemas.openxmlformats.org/markup-compatibility/2006"" LineHeight=""{1}"" {2} {3}>
-                                            <Paragraph>{4}{0}</Paragraph>
-                                            </RichTextBlock>", input, 
+                                            <Paragraph {5}>{4}{0}</Paragraph>
+                                            </RichTextBlock>",  input, 
                                                                 isLive ? 22 : 20,
                                                                 fontColor == null ? "" : $"Foreground=\"{fontColor}\"",
                                                                 $"FontWeight=\"{fontWeight}\"",
-                                                                lowProfilePrefix);
+                                                                lowProfilePrefix,
+                                                                $"TextAlignment=\"{textAlignment}\"");
+                    if (!xaml.IsXmlString())
+                    {
+                        throw new CustomizedErrorException("不是有效的xml字符串");
+                    }
                     var p = (RichTextBlock)XamlReader.Load(xaml);
                     return p;
                 }
@@ -135,7 +152,7 @@ namespace BiliLite.Extensions
             }
             catch (Exception ex)
             {
-                _logger.Error($"富文本转换失败: {txt}", ex);
+                _logger.Error($"富文本转换失败: {txt} || {input}", ex);
                 var tx = new RichTextBlock();
                 Paragraph paragraph = new Paragraph();
                 Run run = new Run() { Text = txt };
@@ -163,6 +180,7 @@ namespace BiliLite.Extensions
                 matches.Add(index, value);
             }
             var newInput = regex.Replace(input, "");
+            if (newInput.Length < length) return input;
             var output = newInput.Substring(0, length);
             foreach (var pair in matches)
             {
@@ -321,9 +339,9 @@ namespace BiliLite.Extensions
         /// </summary>
         /// <param name="url"></param>
         /// <returns></returns>
-        public static bool IsUrl(this string url)
+        public static bool IsUrl(this string url, UriKind kind = UriKind.Absolute)
         {
-            return Uri.TryCreate(url, UriKind.Absolute, out Uri _);
+            return Uri.TryCreate(url, kind, out Uri _);
         }
 
         public static string UrlEncode(this string text)
@@ -331,7 +349,83 @@ namespace BiliLite.Extensions
             return Uri.EscapeDataString(text);
         }
 
+        public static bool IsXmlString(this string text)
+        {
+            if (string.IsNullOrEmpty(text)) return false;
+            var detail = text.Trim();
+            if (!detail.StartsWith("<") && !detail.EndsWith(">")) return false;
+            var xml = new XmlDocument();
+            try
+            {
+                xml.LoadXml($"<Root>{detail}</Root>");
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        public static IBuffer StrToBuffer(this string text)
+        {
+            var data = System.Text.Encoding.UTF8.GetBytes(text);
+            var buffer = data.AsBuffer();
+            return buffer;
+        }
+
+        public static string GetImageTypeFromFileName(this string fileName)
+        {
+            // 获取文件扩展名并转换为小写
+            string extension = Path.GetExtension(fileName)?.ToLower();
+
+            switch (extension)
+            {
+                case ".jpg":
+                case ".jpeg":
+                    return "jpeg";
+                case ".gif":
+                    return "gif";
+                case ".png":
+                    return "png";
+                default:
+                    return "jpeg";
+            }
+        }
+
         #region Private methods
+
+        private static string HandleTimeSeek(string input)
+        {
+            List<string> keyword = new List<string>();
+            List<List<int>> haveHandledOffset = new List<List<int>>();
+            // 正则表达式模式：匹配“mm:ss”和“hh:mm:ss”格式的时间
+            var pattern = @"(?<!\d)(\d{1,}:\d{2}:\d{2}|\d{1,}:\d{2}|\d{1,}：\d{2}：\d{2}|\d{1,}：\d{2})(?!\d)";
+            // 使用 Regex.Matches 获取所有匹配项
+            MatchCollection matches = Regex.Matches(input, pattern);
+
+            var offset = 0;
+            foreach (Match item in matches)
+            {
+                if (keyword.Contains(item.Groups[0].Value) || haveHandledOffset
+                        .Where(index => (item.Index + offset > index[0] && item.Index + offset < index[1])).ToList()
+                        .Count > 0)
+                {
+                    continue;
+                }
+
+                keyword.Add(item.Groups[0].Value);
+                var data =
+                    @"<InlineUIContainer><HyperlinkButton Command=""{Binding SeekCommand}""  IsEnabled=""True"" Margin=""2 -3 2 -5"" Padding=""0 2 0 0"" " +
+                    string.Format(
+                        @" CommandParameter=""{0}"" ><TextBlock>⏩{0}</TextBlock></HyperlinkButton></InlineUIContainer>",
+                        item.Groups[0].Value);
+                input = input.Remove(item.Index + offset, item.Length);
+                input = input.Insert(item.Index + offset, data);
+                haveHandledOffset.Add(new List<int> { item.Index + offset, item.Index + offset + data.Length });
+                offset += data.Length - item.Length;
+            }
+            return input;
+        }
 
         /// <summary>
         /// 处理表情
@@ -386,7 +480,7 @@ namespace BiliLite.Extensions
             List<string> keyword = new List<string>();
             List<List<int>> haveHandledOffset = new List<List<int>>();
             //如果是链接就不处理了
-            if (!Regex.IsMatch(input, @"/[aAbBcC][vV]([a-zA-Z0-9]+)"))
+            if (!Regex.IsMatch(input, @"(?<=://)[^\s]*[aAbBcC][vV]([a-zA-Z0-9]+)"))
             {
                 var offset = 0;
 
@@ -395,7 +489,7 @@ namespace BiliLite.Extensions
                 offset = 0;
                 foreach (Match item in bv)
                 {
-                    if (keyword.Contains(item.Groups[0].Value) || haveHandledOffset.Where(index => (item.Index > index[0] && item.Index < index[1])).ToList().Count > 0)
+                    if (keyword.Contains(item.Groups[0].Value) || haveHandledOffset.Where(index => (item.Index + offset > index[0] && item.Index + offset < index[1])).ToList().Count > 0)
                     {
                         continue;
                     }
@@ -416,7 +510,7 @@ namespace BiliLite.Extensions
                 MatchCollection av = Regex.Matches(input, @"[aA][vV](\d+)"); 
                 foreach (Match item in av)
                 {
-                    if (keyword.Contains(item.Groups[0].Value) || haveHandledOffset.Where(index => (item.Index > index[0] && item.Index < index[1])).ToList().Count > 0)
+                    if (keyword.Contains(item.Groups[0].Value) || haveHandledOffset.Where(index => (item.Index + offset > index[0] && item.Index + offset < index[1])).ToList().Count > 0 || item.Groups[1].Value.ToInt64() < 2)
                     {
                         continue;
                     }
@@ -482,7 +576,7 @@ namespace BiliLite.Extensions
                 var data =
                     @"<InlineUIContainer><HyperlinkButton x:Name=""btn"" Command=""{Binding LaunchUrlCommand}""  IsEnabled=""True"" Margin=""2 -3 2 -5"" Padding=""0 2 0 0"" " +
                     string.Format(
-                        @"CommandParameter=""{0}"" ><TextBlock>🔗网页链接</TextBlock></HyperlinkButton></InlineUIContainer>",
+                        @"ToolTipService.ToolTip=""{0}"" CommandParameter=""{0}"" ><TextBlock>🔗网页链接</TextBlock></HyperlinkButton></InlineUIContainer>",
                         item.Groups[0].Value.IsUrl() ? item.Groups[0].Value : ApiHelper.NOT_FOUND_URL);
                 input = input.Replace(item.Groups[0].Value, data);
             }

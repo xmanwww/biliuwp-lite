@@ -7,10 +7,13 @@ using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Media.Imaging;
 using Windows.UI.Xaml.Navigation;
+using BiliLite.Controls;
 using BiliLite.Models.Common;
 using BiliLite.Services;
 using BiliLite.Extensions;
+using BiliLite.Models.Common.Search;
 using NavigationView = Microsoft.UI.Xaml.Controls.NavigationView;
+using Microsoft.Extensions.DependencyInjection;
 
 // https://go.microsoft.com/fwlink/?LinkId=234238 上介绍了“空白页”项模板
 
@@ -40,6 +43,11 @@ namespace BiliLite.Pages
             }
             else
             {
+                if (!await background.CheckFileExist())
+                {
+                    Notify.ShowMessageToast("背景图片不存在,请重新设置");
+                    return;
+                }
                 var file = await StorageFile.GetFileFromPathAsync(background);
                 var img = new BitmapImage();
                 img.SetSource(await file.OpenReadAsync());
@@ -94,8 +102,8 @@ namespace BiliLite.Pages
                 title = "搜索:" + SearchBox.Text,
                 parameters = new SearchParameter()
                 {
-                    keyword = SearchBox.Text,
-                    searchType = SearchType.Video
+                    Keyword = SearchBox.Text,
+                    SearchType = SearchType.Video
                 }
             });
         }
@@ -167,6 +175,12 @@ namespace BiliLite.Pages
                     this.Frame.Navigate(pageType);
                 else
                     this.Frame.Navigate(pageType, parameter);
+
+                if (frame is MyFrame myFrame)
+                {
+                    var pageSaveService = App.ServiceProvider.GetRequiredService<PageSaveService>();
+                    pageSaveService.UpdatePage(myFrame.PageId, title, pageType, parameter, symbol);
+                }
             }
         }
     }

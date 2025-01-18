@@ -11,6 +11,15 @@
         Necessary,
     }
 
+    public enum HttpMethods
+    {
+        Get,
+        Post,
+        Put,
+        Patch,
+        Delete,
+    }
+
     public enum LoginStatus
     {
         /// <summary>
@@ -362,6 +371,11 @@
         GuardBuy,
 
         /// <summary>
+        /// 新上舰消息, 可区分续费和新人
+        /// </summary>
+        GuardBuyNew,
+
+        /// <summary>
         /// 房间信息更新
         /// </summary>
         RoomChange,
@@ -409,7 +423,12 @@
         /// <summary>
         /// 直播间等级禁言
         /// </summary>
-        RoomSlient,
+        ChatLevelMute,
+
+        /// <summary>
+        /// 直播间观看人数变动
+        /// </summary>
+        OnlineCountChange,
     }
 
     public enum MessageDelayType {
@@ -434,5 +453,136 @@
     {
         SeasonId,
         EpId,
+    }
+
+    public enum UserDynamicShowType
+    {
+        All = 0,
+        Video = 1,
+        Season = 2,
+        Article = 3
+    }
+
+    /// <summary>
+    /// 用户大航海等级
+    /// </summary>
+    public enum UserCaptainType
+    {
+        None = 0,
+
+        /// <summary>
+        /// 总督
+        /// </summary>
+        Zongdu = 1,
+
+        /// <summary>
+        /// 提督
+        /// </summary>
+        Tidu = 2,
+
+        /// <summary>
+        /// 舰长
+        /// </summary>
+        JianZhang = 3,
+    }
+
+    /// <summary>
+    /// 排行榜分区类型
+    /// </summary>
+    public enum RankRegionType
+    {
+        /// <summary>
+        /// 全部
+        /// </summary>
+        All,
+        /// <summary>
+        /// 原创
+        /// </summary>
+        Origin,
+        /// <summary>
+        /// 新人
+        /// </summary>
+        Rookie
+    }
+
+    public enum FilterRuleType
+    {
+        Recommend,
+        Search,
+        Dynamic,
+    }
+
+    public enum FilterType
+    {
+        /// <summary>
+        /// 关键词
+        /// </summary>
+        Word,
+        /// <summary>
+        /// 正则
+        /// </summary>
+        Regular,
+    }
+
+    public enum FilterContentType
+    {
+        Title,
+        User,
+        Desc,
+    }
+
+    public enum SearchType
+    {
+        /// <summary>
+        /// 视频
+        /// </summary>
+        Video = 0,
+        /// <summary>
+        /// 番剧
+        /// </summary>
+        Anime = 1,
+        /// <summary>
+        /// 直播
+        /// </summary>
+        Live = 2,
+        /// <summary>
+        /// 主播
+        /// </summary>
+        Anchor = 3,
+        /// <summary>
+        /// 用户
+        /// </summary>
+        User = 4,
+        /// <summary>
+        /// 影视
+        /// </summary>
+        Movie = 5,
+        /// <summary>
+        /// 专栏
+        /// </summary>
+        Article = 6,
+        /// <summary>
+        /// 话题
+        /// </summary>
+        Topic = 7
+    }
+
+    public enum IndexSeasonType
+    {
+        Anime = 1,
+        Movie = 2,
+        Documentary = 3,
+        Guochuang = 4,
+        TV = 5,
+        Variety = 7
+    }
+
+    public enum DownloadedSortMode
+    {
+        Default,
+        TimeDesc,
+        TimeAsc,
+        TitleDesc,
+        TitleAsc,
     }
 }

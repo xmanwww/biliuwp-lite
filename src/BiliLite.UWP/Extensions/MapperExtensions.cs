@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using Atelier39;
 using AutoMapper;
@@ -12,19 +13,26 @@ using BiliLite.Models.Common.Danmaku;
 using BiliLite.Models.Common.Download;
 using BiliLite.Models.Common.Dynamic;
 using BiliLite.Models.Common.Home;
+using BiliLite.Models.Common.Msg;
 using BiliLite.Models.Common.Season;
+using BiliLite.Models.Common.Settings;
 using BiliLite.Models.Common.User;
-using BiliLite.Models.Common.User.UserDetails;
 using BiliLite.Models.Common.UserDynamic;
+using BiliLite.Models.Common.Video;
 using BiliLite.Models.Common.Video.Detail;
+using BiliLite.Models.Databases;
 using BiliLite.Models.Download;
 using BiliLite.Models.Dynamic;
+using BiliLite.Models.Functions;
 using BiliLite.Modules.User.UserDetail;
 using BiliLite.Services;
 using BiliLite.ViewModels.Comment;
 using BiliLite.ViewModels.Download;
 using BiliLite.ViewModels.Home;
+using BiliLite.ViewModels.Messages;
+using BiliLite.ViewModels.Plugins;
 using BiliLite.ViewModels.Season;
+using BiliLite.ViewModels.Settings;
 using BiliLite.ViewModels.User;
 using BiliLite.ViewModels.UserDynamic;
 using BiliLite.ViewModels.Video;
@@ -41,6 +49,13 @@ namespace BiliLite.Extensions
         {
             var mapper = new Mapper(new MapperConfiguration(expression =>
             {
+                expression.CreateMap<WebSocketPlugin, WebSocketPluginViewModel>()
+                    .ReverseMap();
+                expression.CreateMap<DownloadedItemDTO, DownloadedItem>()
+                    .ReverseMap();
+                expression.CreateMap<DownloadedSubItemDTO, DownloadedSubItem>()
+                    .ReverseMap();
+
                 expression.CreateMap<DownloadItem, DownloadItemViewModel>();
                 expression.CreateMap<DownloadEpisodeItem, DownloadEpisodeItemViewModel>();
                 expression.CreateMap<CommentItem, HotReply>()
@@ -48,8 +63,7 @@ namespace BiliLite.Extensions
                     .ForMember(dest => dest.Message, opt => opt.MapFrom(src => src.Content.Message))
                     .ForMember(dest => dest.Emote, opt => opt.MapFrom(src => src.Content.Emote));
                 expression.CreateMap<CommentItem, CommentViewModel>()
-                    .ForMember(dest => dest.HotReplies, opt => opt.MapFrom(src => src.Replies))
-                    .ForMember(dest => dest.HotReplyContents, opt => opt.MapFrom(src => src.Replies));
+                    .ForMember(dest => dest.HotReplies, opt => opt.MapFrom(src => src.Replies));
                 expression.CreateMap<DataCommentModel, DataCommentViewModel>();
                 expression.CreateMap<CommentContentModel, CommentContentViewModel>();
                 expression.CreateMap<VideoDetailModel, VideoDetailViewModel>();
@@ -61,8 +75,19 @@ namespace BiliLite.Extensions
                 expression.CreateMap<SeasonDetailModel, SeasonDetailViewModel>();
                 expression.CreateMap<AnimeFallModel, AnimeFallViewModel>();
                 expression.CreateMap<HomeNavItem, HomeNavItemViewModel>();
-                expression.CreateMap<UserCenterInfoModel, UserCenterInfoViewModel>();
                 expression.CreateMap<FollowTlistItemModel, UserRelationFollowingTagViewModel>();
+                expression.CreateMap<VideoListSection, VideoListSectionViewModel>();
+                expression.CreateMap<VideoPlaylistItem, VideoListItem>();
+                expression.CreateMap<FavoriteItemModel, FavoriteItemViewModel>();
+                expression.CreateMap<CinemaHomeModel, CinemaHomeViewModel>();
+                expression.CreateMap<CinemaHomeFallModel, CinemaHomeFallViewModel>();
+                expression.CreateMap<SeasonShortReviewItemModel, SeasonShortReviewItemViewModel>();
+                expression.CreateMap<SeasonShortReviewItemStatModel, SeasonShortReviewItemStatViewModel>();
+                expression.CreateMap<MediaListItem, VideoListItem>()
+                    .ForMember(dest => dest.Author,
+                        opt => opt.MapFrom(src =>
+                            src.Upper.Name));
+                expression.CreateMap<FilterRule, FilterRuleViewModel>().ReverseMap();
 
                 var danmakuModeConvertDic = new Dictionary<DanmakuLocation, DanmakuMode>()
                 {
@@ -140,9 +165,101 @@ namespace BiliLite.Extensions
                     .ForMember(dest => dest.Desc,
                         opt => opt.MapFrom(src =>
                             src.Modules.FirstOrDefault(x => x.ModuleType == DynModuleType.ModuleDesc).ModuleDesc))
+                    .ForMember(dest => dest.OpusSummary,
+                        opt => opt.MapFrom(src =>
+                            src.Modules.FirstOrDefault(x => x.ModuleType == DynModuleType.ModuleOpusSummary).ModuleOpusSummary))
                     .ForMember(dest => dest.Stat,
                         opt => opt.MapFrom(src =>
-                            src.Modules.FirstOrDefault(x => x.ModuleType == DynModuleType.ModuleStat).ModuleStat));
+                            src.Modules.FirstOrDefault(x => x.ModuleType == DynModuleType.ModuleStat).ModuleStat))
+                    .ForMember(dest => dest.Fold,
+                        opt => opt.MapFrom(src =>
+                            src.Modules.FirstOrDefault(x => x.ModuleType == DynModuleType.ModuleFold).ModuleFold))
+                    .ForMember(dest => dest.SourceJson,
+                        opt => opt.MapFrom(src =>
+                            src.ToString()));
+
+                expression.CreateMap<NewEP, UserDynamicSeasonNewEpInfo>();
+                expression.CreateMap<FollowListItem, UserDynamicSeasonInfo>();
+                expression.CreateMap<BaseShortcutFunction, ShortcutFunctionViewModel>()
+                    .ForMember(dest => dest.IsPressAction,
+                        opt => opt.MapFrom(src =>
+                            src.ReleaseFunction != null));
+                expression.CreateMap<BaseShortcutFunction, ShortcutFunctionModel>();
+                expression.CreateMap<ShortcutFunctionViewModel, ShortcutFunctionModel>();
+
+                expression.CreateMap<BiliMessageSession, ChatContextViewModel>()
+                    .ForMember(dest => dest.Title,
+                        opt => opt.MapFrom(src =>
+                            src.AccountInfo == null ? src.GroupName : src.AccountInfo.Name))
+                    .ForMember(dest => dest.Cover,
+                        opt => opt.MapFrom(src =>
+                            src.AccountInfo == null ? src.GroupCover : src.AccountInfo.PicUrl))
+                    .ForMember(dest => dest.ChatContextId,
+                        opt => opt.MapFrom(src =>
+                            src.TalkerId))
+                    .ForMember(dest => dest.HasNotify,
+                        opt => opt.MapFrom(src =>
+                            src.BizMsgUnreadCount > 0))
+                    .ForMember(dest => dest.UnreadMsgCount,
+                        opt => opt.MapFrom(src =>
+                            src.UnreadCount))
+                    .ForMember(dest => dest.LastMsg,
+                        opt => opt.MapFrom(src =>
+                            src.LastMsg))
+                    .ForMember(dest => dest.Type,
+                        opt => opt.MapFrom(src =>
+                            src.SessionType))
+                    .ForMember(dest => dest.Time,
+                        opt => opt.MapFrom(src =>
+                            src.SessionTs))
+                    .ForMember(dest => dest.FromUserId,
+                        opt => opt.MapFrom(src =>
+                            src.LastMsg.SenderUid));
+
+
+                expression.CreateMap<BiliSessionPrivateMessage, ChatMessage>()
+                    .ForMember(dest => dest.UserId,
+                        opt => opt.MapFrom(src =>
+                            src.SenderUid))
+                    .ForMember(dest => dest.ChatMessageId,
+                        opt => opt.MapFrom(src =>
+                            src.MsgSeqno))
+                    .ForMember(dest => dest.Time,
+                        opt => opt.MapFrom(src =>
+                            DateTimeOffset.FromUnixTimeSeconds(src.Timestamp)))
+                    .ForMember(dest => dest.ContentStr,
+                        opt => opt.MapFrom(src =>
+                            src.Content));
+
+
+                expression.CreateMap<BiliReplyMeData, ReplyMeMessageViewModel>()
+                    .ForMember(dest => dest.UserId,
+                        opt => opt.MapFrom(src =>
+                            src.User.Mid))
+                    .ForMember(dest => dest.UserFace,
+                        opt => opt.MapFrom(src =>
+                            src.User.Avatar))
+                    .ForMember(dest => dest.UserName,
+                        opt => opt.MapFrom(src =>
+                            src.User.Nickname))
+                    .ForMember(dest => dest.Title,
+                        opt => opt.MapFrom(src =>
+                            src.Item.Title))
+                    .ForMember(dest => dest.Content,
+                        opt => opt.MapFrom(src =>
+                            src.Item.SourceContent))
+                    .ForMember(dest => dest.ReferenceContent,
+                        opt => opt.MapFrom(src =>
+                            src.Item.TargetReplyContent))
+                    .ForMember(dest => dest.HasLike,
+                        opt => opt.MapFrom(src =>
+                            src.Item.LikeState != 0))
+                    .ForMember(dest => dest.Time,
+                        opt => opt.MapFrom(src =>
+                            DateTimeOffset.FromUnixTimeSeconds(src.ReplyTime)))
+                    .ForMember(dest => dest.Url,
+                        opt => opt.MapFrom(src =>
+                            src.Item.NativeUri));
             }));
 
             services.AddSingleton<IMapper>(mapper);
@@ -263,20 +380,20 @@ namespace BiliLite.Extensions
                             break;
                         }
                     case 4310:
-                    {
-                        var dynUgcSeason = new DynamicUgcSeasonCardModel()
                         {
-                            Aid = moduleDynamic.ModuleDynamic
-                                .DynUgcSeason.Avid.ToString(),
-                            Duration = moduleDynamic.ModuleDynamic.DynUgcSeason.Duration,
-                            Pic = moduleDynamic.ModuleDynamic
-                                .DynUgcSeason.Cover,
-                            Title = moduleDynamic.ModuleDynamic.DynUgcSeason.Title,
-                        };
+                            var dynUgcSeason = new DynamicUgcSeasonCardModel()
+                            {
+                                Aid = moduleDynamic.ModuleDynamic
+                                    .DynUgcSeason.Avid.ToString(),
+                                Duration = moduleDynamic.ModuleDynamic.DynUgcSeason.Duration,
+                                Pic = moduleDynamic.ModuleDynamic
+                                    .DynUgcSeason.Cover,
+                                Title = moduleDynamic.ModuleDynamic.DynUgcSeason.Title,
+                            };
 
-                        dynItemModel.UgcSeason = dynUgcSeason;
-                        break;
-                    }
+                            dynItemModel.UgcSeason = dynUgcSeason;
+                            break;
+                        }
                 }
 
                 dynamicItemModels.Add(dynItemModel);

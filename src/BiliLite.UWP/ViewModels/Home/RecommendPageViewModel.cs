@@ -1,10 +1,13 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using BiliLite.Extensions;
+using BiliLite.Models.Common;
 using BiliLite.Models.Common.Recommend;
+using BiliLite.Models.Common.Settings;
 using BiliLite.Models.Exceptions;
 using BiliLite.Models.Requests;
 using BiliLite.Models.Requests.Api.Home;
@@ -12,6 +15,7 @@ using BiliLite.Modules;
 using BiliLite.Services;
 using BiliLite.ViewModels.Common;
 using Newtonsoft.Json;
+using PropertyChanged;
 
 namespace BiliLite.ViewModels.Home
 {
@@ -21,13 +25,15 @@ namespace BiliLite.ViewModels.Home
 
         private readonly RecommendAPI m_recommendApi;
         private static readonly ILogger _logger = GlobalLogger.FromCurrentType();
+        private readonly ContentFilterService m_contentFilterService;
 
         #endregion
 
         #region Constructors
 
-        public RecommendPageViewModel()
+        public RecommendPageViewModel(ContentFilterService contentFilterService)
         {
+            m_contentFilterService = contentFilterService;
             m_recommendApi = new RecommendAPI();
             Banner = new ObservableCollection<RecommendBannerItemModel>();
             RefreshCommand = new RelayCommand(Refresh);
@@ -48,28 +54,59 @@ namespace BiliLite.ViewModels.Home
 
         public ObservableCollection<RecommendItemModel> Items { get; set; }
 
+        [DependsOn(nameof(Banner))]
+        public bool ShowBanner
+        {
+            get
+            {
+                if (!SettingService.GetValue(SettingConstants.UI.DISPLAY_RECOMMEND_BANNER,
+                        SettingConstants.UI.DEFAULT_DISPLAY_RECOMMEND_BANNER))
+                {
+                    return false;
+                }
+                return Banner != null && Banner.Any();
+            }
+        }
+
         #endregion
 
         #region Private Methods
 
         private async void LoadMore()
         {
-            if (Items == null || Items.Count == 0)
+            try
             {
-                return;
+                if (Items == null || Items.Count == 0)
+                {
+                    return;
+                }
+                if (Loading)
+                {
+                    return;
+                }
+
+                var idx = Items.LastOrDefault()?.Idx;
+
+                if (string.IsNullOrEmpty(idx))
+                {
+                    await GetRecommend();
+                    return;
+                }
+
+                await GetRecommend(idx);
             }
-            if (Loading)
+            catch (Exception ex)
             {
-                return;
+                _logger.Error(ex.Message, ex);
+                Notify.ShowMessageToast(ex.Message);
             }
-            await GetRecommend(Items.LastOrDefault().Idx);
         }
 
         private void LoadBanner(RecommendItemModel banner)
         {
             try
             {
-                if (Banner == null && Banner.Count != 0) return;
+                if (Banner.Any()) return;
                 foreach (var item in banner.BannerItem)
                 {
                     if (item["type"].ToString() == "static")
@@ -81,6 +118,7 @@ namespace BiliLite.ViewModels.Home
                         Banner.Add(JsonConvert.DeserializeObject<RecommendBannerItemModel>(item["ad_banner"].ToString()));
                     }
                 }
+                Set(nameof(ShowBanner));
             }
             catch (Exception ex)
             {
@@ -108,22 +146,30 @@ namespace BiliLite.ViewModels.Home
                     throw new CustomizedErrorException(obj["message"].ToString());
                 }
 
-                var items = JsonConvert.DeserializeObject<ObservableCollection<RecommendItemModel>>(obj["data"]["items"].ToString().Replace("left_bottom_rcmd_reason_style", "rcmd_reason_style"));
-                var banner = items.FirstOrDefault(x => x.CardGoto == "banner");
+                var recommendItems = JsonConvert.DeserializeObject<List<RecommendItemModel>>(obj["data"]["items"].ToString().Replace("left_bottom_rcmd_reason_style", "rcmd_reason_style"));
+
+                var banner = recommendItems.FirstOrDefault(x => x.CardGoto == "banner");
                 if (banner != null)
                 {
                     //处理banner
                     LoadBanner(banner);
-                    items.Remove(banner);
+                    recommendItems.Remove(banner);
                 }
-                for (var i = items.Count - 1; i >= 0; i--)
+                for (var i = recommendItems.Count - 1; i >= 0; i--)
                 {
-                    if (items[i].ShowAd)
+                    if (recommendItems[i].ShowAd)
                     {
-                        items.Remove(items[i]);
+                        recommendItems.Remove(recommendItems[i]);
                         continue;
                     }
-                    var item = items[i];
+
+                    if (recommendItems[i].AdInfo != null && recommendItems[i].AdInfo.CreativeContent == null)
+                    {
+                        recommendItems.Remove(recommendItems[i]);
+                        continue;
+                    }
+
+                    var item = recommendItems[i];
                     if (item.ThreePointV2 != null && item.ThreePointV2.Count > 0 && item.CardGoto == "av")
                     {
                         item.ThreePointV2.Insert(1, new RecommendThreePointV2ItemModel()
@@ -134,7 +180,21 @@ namespace BiliLite.ViewModels.Home
                             Type = "browser"
                         });
                     }
+
+                    if (item.ThreePointV2 != null)
+                    {
+                        item.ThreePointV2.Insert(1, new RecommendThreePointV2ItemModel()
+                        {
+                            Idx = item.Idx,
+                            Title = $"过滤UP主",
+                            Subtitle = item.Args.UpName,
+                            Type = "fastFilter"
+                        });
+                    }
                 }
+
+                recommendItems = m_contentFilterService.FilterRecommendItems(recommendItems);
+                var items = new ObservableCollection<RecommendItemModel>(recommendItems);
 
                 if (Items == null)
                 {
@@ -173,7 +233,7 @@ namespace BiliLite.ViewModels.Home
                 Notify.ShowMessageToast("正在加载中....");
                 return;
             }
-            Banner = null;
+            // Banner = null;
             Items = null;
             await GetRecommend();
         }
@@ -225,6 +285,23 @@ namespace BiliLite.ViewModels.Home
                 }
                 var handel = HandelError<RecommendPageViewModel>(ex);
                 Notify.ShowMessageToast(handel.message);
+            }
+        }
+
+        public void AddFilterUser(string name)
+        {
+            m_contentFilterService.AddRecommendFilterRule(new FilterRule()
+            {
+                FilterRuleType = FilterRuleType.Recommend,
+                FilterType = FilterType.Word,
+                ContentType = FilterContentType.User,
+                Enable = true,
+                Rule = name,
+            });
+            var filterItems = Items.Where(x => x.Args.UpName == name).ToList();
+            foreach (var filterItem in filterItems)
+            {
+                Items.Remove(filterItem);
             }
         }
 

@@ -15,7 +15,7 @@
     d:DataContext="{d:DesignInstance Type=user:HistoryViewModel}"
     Background="Transparent">
     <Page.Resources>
-        <SolidColorBrush x:Key="PivotHeaderBackground" Color="{ThemeResource TopPaneBackground}"></SolidColorBrush>
+        <SolidColorBrush x:Key="PivotHeaderBackground" Color="Transparent"></SolidColorBrush>
         <convert:DatetimeConvert x:Key="datetime"/>
         <Style x:Key="ItemStyle" TargetType="GridViewItem">
             <Setter Property="Margin" Value="4"></Setter>
@@ -51,10 +51,11 @@
                         <TextBlock VerticalAlignment="Bottom" Margin="0 3 0 0" FontSize="13" Foreground="Gray" Text="{x:Bind Path=AuthorName}"></TextBlock>
                         <TextBlock VerticalAlignment="Bottom" Margin="0 3 0 0" FontSize="13" Foreground="Gray" Visibility="{x:Bind ShowTag}"><Run Text="{x:Bind Path=TagName}"></Run></TextBlock>
                     </StackPanel>
-                    <StackPanel Grid.Row="2" Margin="8 0 0 0" VerticalAlignment="Bottom">
+                    <StackPanel Grid.Row="2" Margin="8 0 0 0" VerticalAlignment="Bottom" ToolTipService.ToolTip="{x:Bind Path=ViewAtDate}">
                         <TextBlock Margin="0 3 0 0" FontSize="13" Foreground="Gray">
                              <Run Text="{x:Bind Path=ViewAt,Converter={StaticResource datetime},ConverterParameter='ts'}"></Run>
-                             <Run Text="{x:Bind Path=Badge}"></Run>         
+                             <Run Text="{x:Bind Path=Badge}"></Run>
+                             <Run Text="{x:Bind Path=ProgressState}"></Run>
                         </TextBlock>
                     </StackPanel>
                 </Grid>
@@ -62,9 +63,9 @@
         </DataTemplate>
     </Page.Resources>
     <Grid>
-        <Pivot>
+        <Pivot x:Name="pivot">
             <!--<Pivot.RightHeader>
-                <Grid Background="{ThemeResource TopPaneBackground}">
+                <Grid Background="Transparent">
                     <Button Margin="8 0">清空记录</Button>
                 </Grid>
             </Pivot.RightHeader>-->

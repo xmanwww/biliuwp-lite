@@ -1,10 +1,20 @@
-﻿using BiliLite.ViewModels.Comment;
+﻿using System.Linq;
+using BiliLite.Models.Attributes;
+using BiliLite.ViewModels;
+using BiliLite.ViewModels.Comment;
+using BiliLite.ViewModels.Common;
 using BiliLite.ViewModels.Download;
 using BiliLite.ViewModels.Home;
 using BiliLite.ViewModels.Live;
+using BiliLite.ViewModels.Rank;
+using BiliLite.ViewModels.Search;
+using BiliLite.ViewModels.Settings;
 using BiliLite.ViewModels.User;
+using BiliLite.ViewModels.User.SendDynamic;
 using BiliLite.ViewModels.UserDynamic;
+using BiliLite.ViewModels.Video;
 using Microsoft.Extensions.DependencyInjection;
+using System.Reflection;
 
 namespace BiliLite.Extensions
 {
@@ -27,7 +37,49 @@ namespace BiliLite.Extensions
             services.AddTransient<UserFollowingTagsFlyoutViewModel>();
             services.AddTransient<UserAttentionButtonViewModel>();
             services.AddTransient<UserDynamicSpaceViewModel>();
+            services.AddTransient<SendDynamicViewModel>();
+            services.AddTransient<SendDynamicV2ViewModel>();
+            services.AddTransient<EmoteViewModel>();
+            services.AddTransient<AtViewModel>();
+            services.AddTransient<TopicViewModel>();
+            services.AddTransient<UserDynamicAllViewModel>();
+            services.AddTransient<PlayerToastViewModel>();
+            services.AddTransient<VideoListViewModel>();
+            services.AddTransient<MyFollowVideoViewModel>();
+            services.AddTransient<CollectedPageViewModel>();
+            services.AddTransient<RankViewModel>();
+            services.AddTransient<EditPlaySpeedMenuViewModel>();
+            services.AddTransient<SendCommentDialogViewModel>();
+            services.AddTransient<FilterSettingsViewModel>();
+            services.AddTransient<LiveSettingsControlViewModel>();
+            services.AddTransient<PlaySettingsControlViewModel>();
+            services.AddTransient<VideoDanmakuSettingsControlViewModel>();
+            services.AddTransient<ShortcutKeySettingsControlViewModel>();
+            services.AddTransient<DevSettingsControlViewModel>();
+            services.AddTransient<MainPageViewModel>();
+            services.AddTransient<SearchPageViewModel>();
+
+            services.AddAttributeViewModel();
+
             return services;
+        }
+
+        private static void AddAttributeViewModel(this IServiceCollection services)
+        {
+            var types = Assembly.GetExecutingAssembly().GetTypes();
+
+            foreach (var type in types)
+            {
+                if (type.GetCustomAttributes(typeof(RegisterSingletonViewModelAttribute), false).Any())
+                {
+                    services.AddSingleton(type);
+                }
+
+                if (type.GetCustomAttributes(typeof(RegisterTransientViewModelAttribute), false).Any())
+                {
+                    services.AddTransient(type);
+                }
+            }
         }
     }
 }

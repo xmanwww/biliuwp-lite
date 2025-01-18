@@ -13,9 +13,6 @@ namespace BiliLite.Controls.DataTemplateSelectors
 
         static UserDynamicItemV2DataTemplateSelector()
         {
-            DataTemplate SelectRowTemplate(UserDynamicItemDataTemplateSelector selector,
-                UserDynamicItemDisplayViewModel _) => selector.OneRowTemplate;
-
             _dynamicTypeTemplateSelectFuncs =
                 new Dictionary<string, Func<UserDynamicItemV2DataTemplateSelector,
                     DynamicV2ItemViewModel, DataTemplate>>()
@@ -23,6 +20,7 @@ namespace BiliLite.Controls.DataTemplateSelectors
                     { 
                         Constants.DynamicTypes.DRAW, (selector, model) =>
                         {
+                            if (model.Dynamic == null) return selector.OtherTemplate;
                             if (model.Dynamic.DynDraw.Items.Count == 1)
                             {
                                 return selector.Draw1x1Template;
@@ -38,6 +36,12 @@ namespace BiliLite.Controls.DataTemplateSelectors
                     { Constants.DynamicTypes.MUSIC, (selector, model) => selector.MusicTemplate },
                     { Constants.DynamicTypes.COMMON_SQUARE, (selector, model) => selector.CommonSquareTemplate },
                     { Constants.DynamicTypes.LIVE_RCMD, (selector, model) => selector.LiveRcmdTemplate },
+                    { Constants.DynamicTypes.LIVE, (selector, model) => selector.LiveTemplate },
+                    { Constants.DynamicTypes.CUSTOM_SEASON, (selector, model) => selector.CustomSeasonTemplate },
+                    { Constants.DynamicTypes.CUSTOM_ARTICLE, (selector, model) => selector.CustomArticleTemplate },
+                    { Constants.DynamicTypes.UGC_SEASON, (selector, model) => selector.UgcSeasonTemplate },
+                    { Constants.DynamicTypes.FOLD, (selector, model) => selector.FoldTemplate },
+                    { Constants.DynamicTypes.COUR_UP, (selector, model) => selector.CourUpTemplate },
                 };
         }
 
@@ -62,6 +66,18 @@ namespace BiliLite.Controls.DataTemplateSelectors
         public DataTemplate CommonSquareTemplate { get; set; }
 
         public DataTemplate LiveRcmdTemplate { get; set; }
+
+        public DataTemplate LiveTemplate { get; set; }
+
+        public DataTemplate UgcSeasonTemplate { get; set; }
+
+        public DataTemplate FoldTemplate { get; set; }
+
+        public DataTemplate CourUpTemplate { get; set; }
+
+        public DataTemplate CustomSeasonTemplate { get; set; }
+
+        public DataTemplate CustomArticleTemplate { get; set; }
 
         public DataTemplate OtherTemplate { get; set; }
 

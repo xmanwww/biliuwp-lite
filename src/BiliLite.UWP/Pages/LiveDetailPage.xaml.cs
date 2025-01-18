@@ -1,17 +1,29 @@
 ﻿using BiliLite.Controls;
 using BiliLite.Extensions;
 using BiliLite.Models.Common;
+using BiliLite.Models.Common.Live;
+using BiliLite.Models.Common.Player;
+using BiliLite.Models.Exceptions;
 using BiliLite.Modules;
+using BiliLite.Player;
+using BiliLite.Player.Controllers;
+using BiliLite.Player.States.ContentStates;
+using BiliLite.Player.States.PauseStates;
+using BiliLite.Player.States.PlayStates;
+using BiliLite.Player.States.ScreenStates;
 using BiliLite.Services;
+using BiliLite.Services.Interfaces;
+using BiliLite.ViewModels.Live;
+using BiliLite.ViewModels.Settings;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml.Controls;
-using NSDanmaku.Model;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices.WindowsRuntime;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Windows.ApplicationModel.DataTransfer;
-using Windows.Foundation;
 using Windows.Graphics.Display;
 using Windows.Graphics.Imaging;
 using Windows.Storage;
@@ -22,20 +34,8 @@ using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Controls.Primitives;
 using Windows.UI.Xaml.Input;
-using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Media.Imaging;
 using Windows.UI.Xaml.Navigation;
-using BiliLite.Models.Common.Live;
-using BiliLite.Models.Common.Player;
-using BiliLite.Models.Exceptions;
-using BiliLite.Player;
-using BiliLite.Player.Controllers;
-using BiliLite.Player.States.ContentStates;
-using BiliLite.Player.States.PauseStates;
-using BiliLite.Player.States.PlayStates;
-using BiliLite.Player.States.ScreenStates;
-using BiliLite.ViewModels.Live;
-using Windows.UI.Xaml.Documents;
 
 // https://go.microsoft.com/fwlink/?LinkId=234238 上介绍了“空白页”项模板
 
@@ -44,7 +44,7 @@ namespace BiliLite.Pages
     /// <summary>
     /// 可用于自身或导航至 Frame 内部的空白页。
     /// </summary>
-    public sealed partial class LiveDetailPage : BasePage
+    public sealed partial class LiveDetailPage : BasePage, IPlayPage, IUpdatePivotLayout
     {
         private static readonly ILogger logger = GlobalLogger.FromCurrentType();
 
@@ -53,15 +53,19 @@ namespace BiliLite.Pages
         private readonly RealPlayInfo m_realPlayInfo;
         private readonly PlayerConfig m_playerConfig;
         private readonly LiveDetailPageViewModel m_viewModel;
+        private readonly bool m_useNsDanmaku = true;
+        private readonly IDanmakuController m_danmakuController;
+        private readonly LiveSettingsControlViewModel m_liveSettingsControlViewModel;
 
         DisplayRequest dispRequest;
         LiveRoomViewModel m_liveRoomViewModel;
-        SettingVM settingVM;
         DispatcherTimer timer_focus;
         DispatcherTimer controlTimer;
+        DispatcherTimer chatScrollTimer;
 
-        private string url = "";
         private bool changePlayUrlFlag = false;
+        private bool isPointerInChatList = false;
+        private bool isPointerInThisPage = true;
 
         public LiveDetailPage()
         {
@@ -86,21 +90,70 @@ namespace BiliLite.Pages
             dataTransferManager.DataRequested += DataTransferManager_DataRequested;
             //每过2秒就设置焦点
             timer_focus = new DispatcherTimer() { Interval = TimeSpan.FromSeconds(2) };
-
             timer_focus.Tick += Timer_focus_Tick;
             controlTimer = new DispatcherTimer() { Interval = TimeSpan.FromSeconds(1) };
             controlTimer.Tick += ControlTimer_Tick;
-            settingVM = new SettingVM();
+            chatScrollTimer = new DispatcherTimer() { Interval = TimeSpan.FromSeconds(3) };
+            chatScrollTimer.Tick += ChatScrollTimer_Tick;
+            chatScrollTimer.Start();
+
+            m_liveSettingsControlViewModel = App.ServiceProvider.GetRequiredService<LiveSettingsControlViewModel>();
 
             m_liveRoomViewModel = new LiveRoomViewModel();
             m_liveRoomViewModel.ChangedPlayUrl += LiveRoomViewModelChangedPlayUrl;
             m_liveRoomViewModel.AddNewDanmu += LiveRoomViewModelAddNewDanmu;
             m_liveRoomViewModel.AnchorLotteryEnd += LiveRoomViewModelAnchorLotteryEnd;
             m_liveRoomViewModel.RedPocketLotteryEnd += LiveRoomViewModelRedPocketLotteryEnd;
-            m_liveRoomViewModel.ChatScrollToEnd += LiveRoomViewModelChatScrollToEnd;
-            m_liveRoomViewModel.LotteryViewModel.AnchorLotteryStart += LiveRoomViewModelAnchorLotteryStart;
+            m_liveRoomViewModel.AnchorLotteryStart += LiveRoomViewModelAnchorLotteryStart;
+            m_liveRoomViewModel.SetManualPlayUrl += LiveRoomViewModelSetManualPlayUrl;
+            m_liveRoomViewModel.AddLotteryShieldWord += (sender, word) =>
+            {
+                if (m_liveRoomViewModel.ShowLotteryDanmu) return;
+                AddShieldWord(word);
+                if (sender is LiveRoomAnchorLotteryInfoModel) m_liveRoomViewModel.LotteryDanmu["AnchorLottery"] = (sender as LiveRoomAnchorLotteryInfoModel).Danmu;
+                if (sender is LiveRoomRedPocketLotteryInfoModel) m_liveRoomViewModel.LotteryDanmu["RedPocketLottery"] = (sender as LiveRoomRedPocketLotteryInfoModel).Danmu;
+            };
+            m_liveRoomViewModel.DelShieldWord += (_, word) => DelShieldWord(word);
+            m_liveRoomViewModel.SpecialLiveRoomHideElements += (_, e) =>
+            {
+                pivot.Items.Remove(pivot_Guard);
+                BottomBtnGiftRow.Visibility = Visibility.Collapsed;
+                BottomGiftBar.Visibility = Visibility.Collapsed;
+            };
+            m_liveRoomViewModel.RefreshGuardNum += (_, e) =>
+            {
+                var temp = pivot.SelectedIndex;
+                pivot.SelectedIndex = 3;
+                pivot.SelectedIndex = temp;
+            };
             this.Loaded += LiveDetailPage_Loaded;
             this.Unloaded += LiveDetailPage_Unloaded;
+
+            m_useNsDanmaku = (DanmakuEngineType)SettingService.GetValue(SettingConstants.Live.DANMAKU_ENGINE,
+                (int)SettingConstants.Live.DEFAULT_DANMAKU_ENGINE) == DanmakuEngineType.NSDanmaku;
+            if (m_useNsDanmaku)
+            {
+                m_danmakuController = App.ServiceProvider.GetRequiredService<NsDanmakuController>();
+                m_danmakuController.Init(DanmuControl);
+            }
+            else
+            {
+                m_danmakuController = App.ServiceProvider.GetRequiredService<FrostMasterDanmakuController>();
+                m_danmakuController.Init(DanmakuCanvas);
+            }
+        }
+
+        public bool IsPlaying => m_viewModel.PlayState.IsPlaying;
+
+        private void LiveRoomViewModelSetManualPlayUrl(object sender, object e)
+        {
+            var url = e as string;
+            m_liveRoomViewModel.ManualPlayUrl = url;
+            m_realPlayInfo.ManualPlayUrl = url;
+
+            LowDelayHaveStorageUrl.Text = url.Length > 0 ? "是" : "否";
+            var regex = new Regex(@"live_\d+_\d+\.flv");
+            if (regex.IsMatch(url)) { LowDelayHaveStorageUrl.Text = "是[原始流]"; }
         }
 
         private void ControlTimer_Tick(object sender, object e)
@@ -118,6 +171,18 @@ namespace BiliLite.Pages
             {
                 showControlsFlag++;
             }
+        }
+
+        private void ChatScrollTimer_Tick(object sender, object e)
+        {
+            ChatScrollToBottom();
+            chatScrollTimer.Stop();
+            chatScrollTimer.Start();
+        }
+
+        private void ChatScrollToBottom()
+        {
+            if (list_chat.Items.Count > 0 && !isPointerInChatList && isPointerInThisPage) list_chat.ScrollIntoView(list_chat.Items[list_chat.Items.Count - 1]);
         }
 
         private void Timer_focus_Tick(object sender, object e)
@@ -140,13 +205,8 @@ namespace BiliLite.Pages
             var str = e.AwardUsers.Aggregate("", (current, item) => current + (item.Uname + "、"));
             str = str.TrimEnd('、');
             var msg = $"天选时刻 开奖信息:\r\n奖品: {e.AwardName} \r\n中奖用户:{str}";
-            foreach(var awardUser in e.AwardUsers)
-            {
-                if (awardUser.Uid == SettingService.Account.UserID)
-                {
-                    msg += $"\r\n你已抽中奖品: {e.AwardName}, 恭喜欧皇~";
-                }
-            }
+            msg += e.AwardUsers.Any(user => user.Uid == SettingService.Account.UserID) ? $"\r\n你已抽中奖品: {e.AwardName}, 恭喜欧皇~" : "";
+
             Notify.ShowMessageToast(msg, new List<MyUICommand>(), 10);
             AnchorLotteryWinnerList.Content = e.WinnerList;
             m_liveRoomViewModel.ShowAnchorLotteryWinnerList = true;
@@ -161,8 +221,10 @@ namespace BiliLite.Pages
             m_liveRoomViewModel.ShowRedPocketLotteryWinnerList = true;
             foreach (var winner in winners)
             {
-                if (winner[0] == (SettingService.Account.UserID).ToString()) {
-                    Notify.ShowMessageToast($"你已在人气红包抽中 {awards[winner[3]].AwardName} , 赶快查看吧~");
+                if (winner[0] == (SettingService.Account.UserID).ToString())
+                {
+                    Notify.ShowMessageToast($"你已在人气红包抽奖中抽中 {awards[winner[3]].AwardName} , 赶快到背包中查看吧~", 5);
+                    break;
                 }
             }
             m_liveRoomViewModel.LoadBag().RunWithoutAwait();
@@ -170,14 +232,15 @@ namespace BiliLite.Pages
 
         private void LiveRoomViewModelAddNewDanmu(object sender, DanmuMsgModel e)
         {
-            if (DanmuControl.Visibility != Visibility.Visible) return;
-            if (settingVM.LiveWords != null && settingVM.LiveWords.Count > 0)
+            if (m_danmakuController.DanmakuViewModel.IsHide) return;
+
+            if (m_liveSettingsControlViewModel.LiveShieldWords != null && m_liveSettingsControlViewModel.LiveShieldWords.Count > 0)
             {
-                if (settingVM.LiveWords.FirstOrDefault(x => e.Text.Contains(x)) != null) return;
+                if (m_liveSettingsControlViewModel.LiveShieldWords.FirstOrDefault(x => e.Text.Contains(x)) != null) return;
             }
             try
             {
-                DanmuControl.AddLiveDanmu(e.Text, false, e.DanmuColor.StrToColor());
+                m_danmakuController.AddLiveDanmaku(e.Text, (SettingService.Account.Logined && e.Uid.ToInt64() == SettingService.Account.UserID), e.DanmuColor.StrToColor());
             }
             catch (Exception ex)
             {
@@ -186,25 +249,18 @@ namespace BiliLite.Pages
             }
         }
 
-        private void LiveRoomViewModelChatScrollToEnd(object sender, EventArgs e)
-        {
-            list_chat.ScrollIntoView(list_chat.Items[list_chat.Items.Count - 1]);
-        }
-
         #region 页面生命周期
 
         private void LiveDetailPage_Unloaded(object sender, RoutedEventArgs e)
         {
-            Window.Current.CoreWindow.KeyDown -= CoreWindow_KeyDown;
             timer_focus.Stop();
             controlTimer.Stop();
         }
 
         private void LiveDetailPage_Loaded(object sender, RoutedEventArgs e)
         {
-            Window.Current.CoreWindow.KeyDown += CoreWindow_KeyDown;
             BtnFoucs.Focus(FocusState.Programmatic);
-            DanmuControl.ClearAll();
+            m_danmakuController.Clear();
             if (this.Parent is MyFrame frame)
             {
                 frame.ClosedPage -= LiveDetailPage_ClosedPage;
@@ -273,10 +329,23 @@ namespace BiliLite.Pages
                 if (e.NewState.IsFullscreen && !view.IsFullScreenMode)
                 {
                     view.TryEnterFullScreenMode();
+
+                    if (SettingService.GetValue(SettingConstants.UI.DISPLAY_MODE, 0) <= 0)
+                    {
+                        var marginOffset = SettingService.GetValue(SettingConstants.UI.TAB_HEIGHT,
+                            SettingConstants.UI.DEFAULT_TAB_HEIGHT);
+                        this.Margin = new Thickness(0, marginOffset * -1, 0, 0);
+                    }
+                    else
+                    {
+                        this.Margin = new Thickness(0, -40, 0, 0);
+                    }
                 }
                 else if (view.IsFullScreenMode)
                 {
                     view.ExitFullScreenMode();
+
+                    this.Margin = new Thickness(0);
                 }
             });
         }
@@ -320,7 +389,6 @@ namespace BiliLite.Pages
 
         private void MediaStopped()
         {
-            url = "";
         }
 
         private async Task MediaFailed(PlayerException exception)
@@ -378,7 +446,8 @@ namespace BiliLite.Pages
             {
                 var domain = new Uri(urls[i].Url).Host;
 
-                if (domain.Contains(m_viewModel.LivePlayUrlSource) && !flag) {
+                if (domain.Contains(m_viewModel.LivePlayUrlSource) && !flag)
+                {
                     BottomCBLine.SelectedIndex = i;
                     flag = true;
                 }
@@ -390,104 +459,6 @@ namespace BiliLite.Pages
 
             BottomCBQuality.SelectedItem = m_liveRoomViewModel.CurrentQn;
             changePlayUrlFlag = false;
-        }
-
-        private async void CoreWindow_KeyDown(Windows.UI.Core.CoreWindow sender, Windows.UI.Core.KeyEventArgs args)
-        {
-            var elent = FocusManager.GetFocusedElement();
-            if (elent is TextBox || elent is AutoSuggestBox)
-            {
-                args.Handled = false;
-                return;
-            }
-            args.Handled = true;
-            switch (args.VirtualKey)
-            {
-                case Windows.System.VirtualKey.Space:
-                    if (m_playerController.PauseState.IsPaused)
-                    {
-                        await m_playerController.PauseState.Resume();
-                    }
-                    else
-                    {
-                        await m_playerController.PauseState.Pause();
-                    }
-                    break;
-
-                case Windows.System.VirtualKey.Up:
-                    if (SliderVolume.Value + 0.1 > 1)
-                    {
-                        SliderVolume.Value = 1;
-                    }
-                    else
-                    {
-                        SliderVolume.Value += 0.1;
-                    }
-
-                    TxtToolTip.Text = "音量:" + SliderVolume.Value.ToString("P");
-                    ToolTip.Visibility = Visibility.Visible;
-                    await Task.Delay(2000);
-                    ToolTip.Visibility = Visibility.Collapsed;
-                    break;
-
-                case Windows.System.VirtualKey.Down:
-
-                    if (SliderVolume.Value - 0.1 < 0)
-                    {
-                        SliderVolume.Value = 0;
-                    }
-                    else
-                    {
-                        SliderVolume.Value -= 0.1;
-                    }
-                    if (SliderVolume.Value == 0)
-                    {
-                        TxtToolTip.Text = "静音";
-                    }
-                    else
-                    {
-                        TxtToolTip.Text = "音量:" + SliderVolume.Value.ToString("P");
-                    }
-                    ToolTip.Visibility = Visibility.Visible;
-                    await Task.Delay(2000);
-                    ToolTip.Visibility = Visibility.Collapsed;
-                    break;
-                case Windows.System.VirtualKey.Escape:
-                    SetFullScreen(false);
-
-                    break;
-                case Windows.System.VirtualKey.F8:
-                case Windows.System.VirtualKey.T:
-                    //小窗播放
-                    MiniWidnows(BottomBtnMiniWindows.Visibility == Visibility.Visible);
-
-                    break;
-                case Windows.System.VirtualKey.F12:
-                case Windows.System.VirtualKey.W:
-                    SetFullWindow(!m_playerController.ContentState.IsFullWindow);
-                    break;
-                case Windows.System.VirtualKey.F11:
-                case Windows.System.VirtualKey.F:
-                case Windows.System.VirtualKey.Enter:
-                    SetFullScreen(!m_playerController.ScreenState.IsFullscreen);
-                    break;
-                case Windows.System.VirtualKey.F10:
-                    await CaptureVideo();
-                    break;
-                case Windows.System.VirtualKey.F9:
-                case Windows.System.VirtualKey.D:
-                    if (DanmuControl.Visibility == Visibility.Visible)
-                    {
-                        DanmuControl.Visibility = Visibility.Collapsed;
-                    }
-                    else
-                    {
-                        DanmuControl.Visibility = Visibility.Visible;
-                    }
-                    break;
-                default:
-                    break;
-            }
         }
 
         private async Task StopPlay()
@@ -529,58 +500,69 @@ namespace BiliLite.Pages
             m_viewModel.LivePlayUrlSource = SettingService.GetValue(
                 SettingConstants.Live.DEFAULT_LIVE_PLAY_URL_SOURCE,
                 DefaultPlayUrlSourceOptions.DEFAULT_PLAY_URL_SOURCE);
+
+            // 低延迟模式
+            LowDelayMode.IsOn = SettingService.GetValue<bool>(SettingConstants.Live.LOW_DELAY_MODE, SettingConstants.Live.DEFAULT_LOW_DELAY_MODE);
         }
 
         private void LoadSetting()
         {
             //音量
-            m_player.Volume = SettingService.GetValue(SettingConstants.Player.PLAYER_VOLUME, 1.0);
+            m_player.Volume = SettingService.GetValue(SettingConstants.Player.PLAYER_VOLUME, SettingConstants.Player.DEFAULT_PLAYER_VOLUME);
             SliderVolume.Value = m_player.Volume;
+            var lockPlayerVolume = SettingService.GetValue(SettingConstants.Player.LOCK_PLAYER_VOLUME, SettingConstants.Player.DEFAULT_LOCK_PLAYER_VOLUME);
             SliderVolume.ValueChanged += (e, args) =>
             {
                 m_player.Volume = SliderVolume.Value;
-                SettingService.SetValue(SettingConstants.Player.PLAYER_VOLUME, SliderVolume.Value);
+                if (!lockPlayerVolume)
+                    SettingService.SetValue(SettingConstants.Player.PLAYER_VOLUME, SliderVolume.Value);
             };
             //亮度
-            _brightness = SettingService.GetValue<double>(SettingConstants.Player.PLAYER_BRIGHTNESS, 0);
+            lockBrightness = SettingService.GetValue(SettingConstants.Player.LOCK_PLAYER_BRIGHTNESS, SettingConstants.Player.DEFAULT_LOCK_PLAYER_BRIGHTNESS);
+            _brightness = SettingService.GetValue<double>(SettingConstants.Player.PLAYER_BRIGHTNESS, SettingConstants.Player.DEFAULT_PLAYER_BRIGHTNESS);
             BrightnessShield.Opacity = _brightness;
 
             //弹幕顶部距离
-            DanmuControl.Margin = new Thickness(0, SettingService.GetValue<int>(SettingConstants.VideoDanmaku.TOP_MARGIN, 0), 0, 0);
-            DanmuTopMargin.Value = DanmuControl.Margin.Top;
+            var marginTop = SettingService.GetValue<double>(SettingConstants.VideoDanmaku.TOP_MARGIN, 0);
+            m_danmakuController.SetTopMargin(marginTop);
+            DanmuTopMargin.Value = marginTop;
             DanmuTopMargin.ValueChanged += new RangeBaseValueChangedEventHandler((e, args) =>
             {
                 SettingService.SetValue<double>(SettingConstants.VideoDanmaku.TOP_MARGIN, DanmuTopMargin.Value);
-                DanmuControl.Margin = new Thickness(0, DanmuTopMargin.Value, 0, 0);
+                m_danmakuController.SetTopMargin(DanmuTopMargin.Value);
             });
             //弹幕大小
-            DanmuControl.DanmakuSizeZoom = SettingService.GetValue<double>(SettingConstants.Live.FONT_ZOOM, 1);
+            m_danmakuController.SetFontZoom(SettingService.GetValue<double>(SettingConstants.Live.FONT_ZOOM, 1));
             DanmuSettingFontZoom.ValueChanged += new RangeBaseValueChangedEventHandler((e, args) =>
             {
                 if (isMini) return;
                 SettingService.SetValue<double>(SettingConstants.Live.FONT_ZOOM, DanmuSettingFontZoom.Value);
+                m_danmakuController.SetFontZoom(DanmuSettingFontZoom.Value);
             });
             //弹幕速度
-            DanmuControl.DanmakuDuration = SettingService.GetValue<int>(SettingConstants.Live.SPEED, 10);
+            m_danmakuController.SetSpeed(SettingService.GetValue<int>(SettingConstants.Live.SPEED, 10));
             DanmuSettingSpeed.ValueChanged += new RangeBaseValueChangedEventHandler((e, args) =>
             {
                 if (isMini) return;
-                SettingService.SetValue<double>(SettingConstants.Live.SPEED, DanmuSettingSpeed.Value);
+                SettingService.SetValue<int>(SettingConstants.Live.SPEED, (int)DanmuSettingSpeed.Value);
+                m_danmakuController.SetSpeed((int)DanmuSettingSpeed.Value);
             });
             //弹幕透明度
-            DanmuControl.Opacity = SettingService.GetValue<double>(SettingConstants.Live.OPACITY, 1.0);
+            m_danmakuController.SetOpacity(SettingService.GetValue<double>(SettingConstants.Live.OPACITY, 1.0));
             DanmuSettingOpacity.ValueChanged += new RangeBaseValueChangedEventHandler((e, args) =>
             {
                 SettingService.SetValue<double>(SettingConstants.Live.OPACITY, DanmuSettingOpacity.Value);
+                m_danmakuController.SetOpacity(DanmuSettingOpacity.Value);
             });
             //弹幕加粗
-            DanmuControl.DanmakuBold = SettingService.GetValue<bool>(SettingConstants.Live.BOLD, false);
+            m_danmakuController.SetBold(SettingService.GetValue<bool>(SettingConstants.Live.BOLD, false));
             DanmuSettingBold.Toggled += new RoutedEventHandler((e, args) =>
             {
                 SettingService.SetValue<bool>(SettingConstants.Live.BOLD, DanmuSettingBold.IsOn);
+                m_danmakuController.SetBold(DanmuSettingBold.IsOn);
             });
             //弹幕样式
-            DanmuControl.DanmakuStyle = (DanmakuBorderStyle)SettingService.GetValue<int>(SettingConstants.Live.BORDER_STYLE, 2);
+            m_danmakuController.SetBolderStyle(SettingService.GetValue<int>(SettingConstants.Live.BORDER_STYLE, 2));
             DanmuSettingStyle.SelectionChanged += new SelectionChangedEventHandler((e, args) =>
             {
                 if (DanmuSettingStyle.SelectedIndex != -1)
@@ -589,16 +571,23 @@ namespace BiliLite.Pages
                 }
             });
 
-
             //弹幕显示区域
-            DanmuControl.DanmakuArea = SettingService.GetValue<double>(SettingConstants.Live.AREA, 1);
+            m_danmakuController.SetArea(SettingService.GetValue<double>(SettingConstants.Live.AREA, 1));
             DanmuSettingArea.ValueChanged += new RangeBaseValueChangedEventHandler((e, args) =>
             {
                 SettingService.SetValue<double>(SettingConstants.Live.AREA, DanmuSettingArea.Value);
+                m_danmakuController.SetArea(DanmuSettingArea.Value);
             });
 
             //弹幕开关
-            DanmuControl.Visibility = SettingService.GetValue<Visibility>(SettingConstants.Live.SHOW, Visibility.Visible);
+            if (SettingService.GetValue<Visibility>(SettingConstants.Live.SHOW, Visibility.Visible) == Visibility.Visible)
+            {
+                m_danmakuController.Show();
+            }
+            else
+            {
+                m_danmakuController.Hide();
+            }
             //弹幕延迟
             //LiveSettingDelay.Value = SettingService.GetValue<int>(SettingConstants.Live.DELAY, 20);
             //liveRoomVM.SetDelay(LiveSettingDelay.Value.ToInt32());
@@ -607,6 +596,17 @@ namespace BiliLite.Pages
             //    SettingService.SetValue(SettingConstants.Live.DELAY, LiveSettingDelay.Value);
             //    liveRoomVM.SetDelay(LiveSettingDelay.Value.ToInt32());
             //});
+
+            //弹幕字体
+            var fontFamily =
+                SettingService.GetValue<string>(SettingConstants.Live.DANMAKU_FONT_FAMILY, string.Empty);
+            m_danmakuController.SetFont(fontFamily);
+            DanmuSettingFont.Text = fontFamily;
+            DanmuSettingFont.QuerySubmitted += (e, args) =>
+            {
+                m_danmakuController.SetFont(DanmuSettingFont.Text);
+                SettingService.SetValue(SettingConstants.Live.DANMAKU_FONT_FAMILY, DanmuSettingFont.Text);
+            };
 
             //互动清理数量
             LiveSettingCount.Value = SettingService.GetValue<int>(SettingConstants.Live.DANMU_CLEAN_COUNT, 200);
@@ -651,11 +651,24 @@ namespace BiliLite.Pages
             //屏蔽抽奖信息
             LiveSettingDotReceiveLotteryMsg.IsOn = SettingService.GetValue<bool>(SettingConstants.Live.HIDE_LOTTERY, false);
             m_liveRoomViewModel.ReceiveLotteryMsg = !LiveSettingDotReceiveLotteryMsg.IsOn;
-            LiveSettingDotReceiveWelcomeMsg.Toggled += new RoutedEventHandler((e, args) =>
+            LiveSettingDotReceiveLotteryMsg.Toggled += new RoutedEventHandler((e, args) =>
             {
                 m_liveRoomViewModel.ReceiveLotteryMsg = !LiveSettingDotReceiveLotteryMsg.IsOn;
                 SettingService.SetValue<bool>(SettingConstants.Live.HIDE_LOTTERY, LiveSettingDotReceiveLotteryMsg.IsOn);
             });
+
+            //屏蔽抽奖弹幕关键字
+            LiveSettingDotShowLotteryDanmu.IsOn = SettingService.GetValue<bool>(SettingConstants.Live.HIDE_LOTTERY_DANMU, false);
+            m_liveRoomViewModel.ShowLotteryDanmu = !LiveSettingDotShowLotteryDanmu.IsOn;
+            LiveSettingDotShowLotteryDanmu.Toggled += new RoutedEventHandler((e, args) =>
+            {
+                m_liveRoomViewModel.ShowLotteryDanmu = !LiveSettingDotShowLotteryDanmu.IsOn;
+                SettingService.SetValue<bool>(SettingConstants.Live.HIDE_LOTTERY_DANMU, LiveSettingDotShowLotteryDanmu.IsOn);
+            });
+
+            // 显示底部礼物栏
+            m_viewModel.ShowBottomGiftBar = SettingService.GetValue(SettingConstants.Live.SHOW_BOTTOM_GIFT_BAR,
+                SettingConstants.Live.DEFAULT_SHOW_BOTTOM_GIFT_BAR);
         }
 
         public void ChangeTitle(string title)
@@ -746,27 +759,37 @@ namespace BiliLite.Pages
             if (e)
             {
                 await m_playerController.ContentState.FullWindow();
+                BottomBtnSendDanmakuWide.Visibility = Visibility.Visible;
+                BottomBtnGiftRow.Visibility = Visibility.Collapsed;
             }
             else
             {
                 await m_playerController.ContentState.CancelFullWindow();
+                BottomBtnGiftRow.Visibility = Visibility.Visible;
+                BottomBtnSendDanmakuWide.Visibility = Visibility.Collapsed;
             }
         }
 
         private async void SetFullScreen(bool e)
         {
+            m_danmakuController.SetFullscreen(e);
             if (e)
             {
                 await m_playerController.ScreenState.Fullscreen();
+                BottomBtnSendDanmakuWide.Visibility = Visibility.Visible;
+                BottomBtnGiftRow.Visibility = Visibility.Collapsed;
             }
             else
             {
                 await m_playerController.ScreenState.CancelFullscreen();
+                BottomBtnGiftRow.Visibility = Visibility.Visible;
+                BottomBtnSendDanmakuWide.Visibility = Visibility.Collapsed;
             }
         }
 
         private async void BottomBtnRefresh_Click(object sender, RoutedEventArgs e)
         {
+            LiveRoomViewModelSetManualPlayUrl(this, "");
             await m_liveRoomViewModel.LoadLiveRoomDetail(roomid);
         }
 
@@ -775,6 +798,7 @@ namespace BiliLite.Pages
             if (sender is Button { DataContext: LiveGiftItem giftInfo })
             {
                 await m_liveRoomViewModel.SendGift(giftInfo);
+                await m_liveRoomViewModel.GetEmoticons(); // 送礼物有可能解锁权限,刷新表情包
             }
         }
 
@@ -783,12 +807,105 @@ namespace BiliLite.Pages
             if (sender is Button { DataContext: LiveGiftItem giftInfo })
             {
                 await m_liveRoomViewModel.SendBagGift(giftInfo);
+                await m_liveRoomViewModel.GetEmoticons(); // 送礼物有可能解锁权限,刷新表情包
             }
         }
 
         private async void TopBtnScreenshot_Click(object sender, RoutedEventArgs e)
         {
             await CaptureVideo();
+        }
+
+        public async void Pause()
+        {
+            await m_playerController.PauseState.Pause();
+        }
+
+        public async void Play()
+        {
+            await m_playerController.PauseState.Resume();
+        }
+
+        public async void AddVolume()
+        {
+            if (SliderVolume.Value + 0.1 > 1)
+            {
+                SliderVolume.Value = 1;
+            }
+            else
+            {
+                SliderVolume.Value += 0.1;
+            }
+
+            TxtToolTip.Text = "音量:" + SliderVolume.Value.ToString("P");
+            ToolTip.Visibility = Visibility.Visible;
+            await Task.Delay(2000);
+            ToolTip.Visibility = Visibility.Collapsed;
+        }
+
+        public async void MinusVolume()
+        {
+            if (SliderVolume.Value - 0.1 < 0)
+            {
+                SliderVolume.Value = 0;
+            }
+            else
+            {
+                SliderVolume.Value -= 0.1;
+            }
+            if (SliderVolume.Value == 0)
+            {
+                TxtToolTip.Text = "静音";
+            }
+            else
+            {
+                TxtToolTip.Text = "音量:" + SliderVolume.Value.ToString("P");
+            }
+            ToolTip.Visibility = Visibility.Visible;
+            await Task.Delay(2000);
+            ToolTip.Visibility = Visibility.Collapsed;
+        }
+
+        public void CancelFullscreen()
+        {
+            SetFullScreen(false);
+        }
+
+        Task IPlayPage.CaptureVideo()
+        {
+            return CaptureVideo();
+        }
+
+        public void ToggleDanmakuDisplay()
+        {
+            if (!m_danmakuController.DanmakuViewModel.IsHide)
+            {
+                m_danmakuController.Hide();
+            }
+            else
+            {
+                m_danmakuController.Show();
+            }
+        }
+
+        public void ToggleFullscreen()
+        {
+            SetFullScreen(!m_playerController.ScreenState.IsFullscreen);
+        }
+
+        public void ToggleFullWindow()
+        {
+            SetFullWindow(!m_playerController.ContentState.IsFullWindow);
+        }
+
+        public void ToggleMiniWindows()
+        {
+            MiniWidnows(BottomBtnMiniWindows.Visibility == Visibility.Visible);
+        }
+
+        public void ToggleSubtitle()
+        {
+
         }
 
         private async Task CaptureVideo()
@@ -824,15 +941,14 @@ namespace BiliLite.Pages
 
         private void TopBtnCloseDanmaku_Click(object sender, RoutedEventArgs e)
         {
-            DanmuControl.Visibility = Visibility.Collapsed;
-            SettingService.SetValue(SettingConstants.Live.SHOW, Visibility.Collapsed);
-            DanmuControl.ClearAll();
+            m_danmakuController.Hide();
+            SettingService.SetValue<Visibility>(SettingConstants.Live.SHOW, Visibility.Collapsed);
         }
 
         private void TopBtnOpenDanmaku_Click(object sender, RoutedEventArgs e)
         {
-            DanmuControl.Visibility = Visibility.Visible;
-            SettingService.SetValue(SettingConstants.Live.SHOW, Visibility.Visible);
+            m_danmakuController.Show();
+            SettingService.SetValue<Visibility>(SettingConstants.Live.SHOW, Visibility.Visible);
         }
 
         private async void BtnOpenBox_Click(object sender, RoutedEventArgs e)
@@ -873,17 +989,15 @@ namespace BiliLite.Pages
 
         private async void DanmuText_QuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
         {
-            if (string.IsNullOrEmpty(DanmuText.Text))
+            if (string.IsNullOrEmpty(m_viewModel.DanmakuInput))
             {
                 Notify.ShowMessageToast("弹幕内容不能为空");
                 return;
             }
-            var result = await m_liveRoomViewModel.SendDanmu(DanmuText.Text);
-            if (result)
-            {
-                DanmuText.Text = "";
-            }
+            var result = await m_liveRoomViewModel.SendDanmu(m_viewModel.DanmakuInput);
+            if (result) m_viewModel.DanmakuInput = "";
 
+            await m_liveRoomViewModel.GetEmoticons(); // 长期不看的观众即使在粉丝团也无法发表情, 此时发弹幕即可解锁
         }
 
         private async void BtnAttention_Click(object sender, RoutedEventArgs e)
@@ -958,41 +1072,39 @@ namespace BiliLite.Pages
             });
         }
 
-        private async void BtnSendLotteryDanmu_Click(object sender, RoutedEventArgs e)
+        private async void BtnSendAnchorLotteryDanmu_Click(object sender, RoutedEventArgs e)
         {
-            if (m_liveRoomViewModel.LotteryViewModel != null &&
-                m_liveRoomViewModel.LotteryViewModel.AnchorLotteryInfo != null &&
-                !string.IsNullOrEmpty(m_liveRoomViewModel.LotteryViewModel.AnchorLotteryInfo.Danmu))
+            if (!await m_liveRoomViewModel.JoinAnchorLottery()) return;
+            FlyoutLottery.Hide();
+
+            var msg = "";
+            msg += "弹幕发送成功";
+
+            if (m_liveRoomViewModel.LotteryViewModel.AnchorLotteryInfo.RequireText.Contains("关注主播") && !m_liveRoomViewModel.Attention)
             {
-                var result = await m_liveRoomViewModel.SendDanmu(m_liveRoomViewModel.LotteryViewModel.AnchorLotteryInfo.Danmu);
-                if (result)
-                {
-                    Notify.ShowMessageToast("弹幕发送成功");
-                    FlyoutLottery.Hide();
-                }
+                // 参与天选会自动关注, 无须手动关注
+                m_liveRoomViewModel.Attention = true;
+                msg += ", 关注主播成功";
             }
+
+            Notify.ShowMessageToast(msg);
         }
 
         private async void BtnSendRedPocketLotteryDanmu_Click(object sender, RoutedEventArgs e)
         {
-            if (m_liveRoomViewModel.LotteryViewModel == null ||
-                m_liveRoomViewModel.LotteryViewModel.RedPocketLotteryInfo == null ||
-                string.IsNullOrEmpty(m_liveRoomViewModel.LotteryViewModel.RedPocketLotteryInfo.Danmu)) return;
-            var msg = "";
-            var result = await m_liveRoomViewModel.SendDanmu(m_liveRoomViewModel.LotteryViewModel.RedPocketLotteryInfo.Danmu);
-            if (result)
-            {
-                FlyoutRedPocketLottery.Hide();
-                msg += "弹幕发送成功";
-            }
+            if (!await m_liveRoomViewModel.JoinRedPocketLottery()) return;
+            FlyoutRedPocketLottery.Hide();
 
+            var msg = "";
+            msg += "弹幕发送成功";
             if (!m_liveRoomViewModel.Attention)
             {
-                BtnAttention_Click(sender, e);
+                // 参与红包会自动关注, 无须手动关注
+                m_liveRoomViewModel.Attention = true;
                 msg += ", 关注主播成功";
             }
 
-            Notify.ShowMessageToast(msg, 4);
+            Notify.ShowMessageToast(msg);
         }
 
         private void BottomBtnMiniWindows_Click(object sender, RoutedEventArgs e)
@@ -1021,9 +1133,10 @@ namespace BiliLite.Pages
                     //隐藏标题栏
                     this.Margin = new Thickness(0, -40, 0, 0);
                     await ApplicationView.GetForCurrentView().TryEnterViewModeAsync(ApplicationViewMode.CompactOverlay);
-                    DanmuControl.DanmakuSizeZoom = 0.5;
-                    DanmuControl.DanmakuDuration = 6;
-                    DanmuControl.ClearAll();
+
+                    m_danmakuController.SetFontZoom(0.5);
+                    m_danmakuController.SetSpeed(6);
+                    m_danmakuController.Clear();
                 }
             }
             else
@@ -1033,36 +1146,52 @@ namespace BiliLite.Pages
                 StandardControl.Visibility = Visibility.Visible;
                 MiniControl.Visibility = Visibility.Collapsed;
                 await ApplicationView.GetForCurrentView().TryEnterViewModeAsync(ApplicationViewMode.Default);
-                DanmuControl.DanmakuSizeZoom = SettingService.GetValue<double>(SettingConstants.Live.FONT_ZOOM, 1);
-                DanmuControl.DanmakuDuration = SettingService.GetValue<int>(SettingConstants.Live.SPEED, 10);
-                DanmuControl.ClearAll();
-                DanmuControl.Visibility = SettingService.GetValue<Visibility>(SettingConstants.Live.SHOW, Visibility.Visible);
+                m_danmakuController.SetFontZoom(SettingService.GetValue<double>(SettingConstants.VideoDanmaku.FONT_ZOOM, 1));
+                m_danmakuController.SetSpeed(SettingService.GetValue<int>(SettingConstants.VideoDanmaku.SPEED, 10));
+                m_danmakuController.Clear();
+                if (SettingService.GetValue<Visibility>(SettingConstants.VideoDanmaku.SHOW, Visibility.Visible) == Visibility.Visible)
+                {
+                    m_danmakuController.Show();
+                }
+                else
+                {
+                    m_danmakuController.Hide();
+                }
             }
             MessageCenter.SetMiniWindow(mini);
         }
 
-        private void btnRemoveWords_Click(object sender, RoutedEventArgs e)
+        private void btnRemoveShieldWord_Click(object sender, RoutedEventArgs e)
         {
             var word = (sender as HyperlinkButton).DataContext as string;
-            settingVM.LiveWords.Remove(word);
-            SettingService.SetValue(SettingConstants.Live.SHIELD_WORD, settingVM.LiveWords);
-
+            DelShieldWord(word);
         }
 
-        private void DanmuSettingAddWord_Click(object sender, RoutedEventArgs e)
+        private void btnAddShieldWord_Click(object sender, RoutedEventArgs e)
         {
             if (string.IsNullOrEmpty(DanmuSettingTxtWord.Text))
             {
                 Notify.ShowMessageToast("关键字不能为空");
                 return;
             }
-            if (!settingVM.LiveWords.Contains(DanmuSettingTxtWord.Text))
-            {
-                settingVM.LiveWords.Add(DanmuSettingTxtWord.Text);
-                SettingService.SetValue(SettingConstants.Live.SHIELD_WORD, settingVM.LiveWords);
-            }
+            AddShieldWord(DanmuSettingTxtWord.Text);
 
             DanmuSettingTxtWord.Text = "";
+        }
+
+        private void AddShieldWord(string word)
+        {
+            if (!m_liveSettingsControlViewModel.LiveShieldWords.Contains(word))
+            {
+                m_liveSettingsControlViewModel.LiveShieldWords.Add(word);
+                SettingService.SetValue(SettingConstants.Live.SHIELD_WORD, m_liveSettingsControlViewModel.LiveShieldWords);
+            }
+        }
+
+        private void DelShieldWord(string word)
+        {
+            m_liveSettingsControlViewModel.LiveShieldWords.Remove(word);
+            SettingService.SetValue(SettingConstants.Live.SHIELD_WORD, m_liveSettingsControlViewModel.LiveShieldWords);
         }
 
         #region 播放器手势
@@ -1185,6 +1314,7 @@ namespace BiliLite.Pages
 
         }
 
+        private bool lockBrightness = true;
         double _brightness;
         double Brightness
         {
@@ -1193,7 +1323,8 @@ namespace BiliLite.Pages
             {
                 _brightness = value;
                 BrightnessShield.Opacity = value;
-                SettingService.SetValue<double>(SettingConstants.Player.PLAYER_BRIGHTNESS, _brightness);
+                if (!lockBrightness)
+                    SettingService.SetValue<double>(SettingConstants.Player.PLAYER_BRIGHTNESS, _brightness);
             }
         }
 
@@ -1230,9 +1361,7 @@ namespace BiliLite.Pages
 
         private void Player_SizeChanged(object sender, SizeChangedEventArgs e)
         {
-            var rectangle = new RectangleGeometry();
-            rectangle.Rect = new Rect(0, 0, PlayerView.ActualWidth, PlayerView.ActualHeight);
-            DanmuControl.Clip = rectangle;
+            m_danmakuController.UpdateSize(PlayerView.ActualWidth, PlayerView.ActualHeight);
         }
 
         private async void PlayerModeComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1249,9 +1378,127 @@ namespace BiliLite.Pages
             await LoadPlayer();
         }
 
+        private async void btnRefreshPlayUrl_Click(object sender, RoutedEventArgs e)
+        {
+            var text = LowDelayManualPlayUrlTextBox.Text;
+            if (text.Length > 0)
+            {
+                if (!text.IsUrl())
+                {
+                    LowDelayManualPlayUrlTextBox.Text = "";
+                    Notify.ShowMessageToast("不是正确格式的链接... 🤔 检查一下吧~");
+                    return;
+                }
+                LiveRoomViewModelSetManualPlayUrl(this, text);
+            }
+            await LoadPlayer();
+        }
+
+        private void btnManualPlayUrlCopy_Click(object sender, RoutedEventArgs e)
+        {
+            if (m_liveRoomViewModel.ManualPlayUrl != null && m_liveRoomViewModel.ManualPlayUrl.Length > 0)
+            {
+                m_liveRoomViewModel.ManualPlayUrl.SetClipboard();
+                Notify.ShowMessageToast("已复制链接到剪切板");
+            }
+            else
+            {
+                Notify.ShowMessageToast("没存储链接怎么复制... (｀-_ゝ-)");
+            }
+        }
+
+        private bool IsPlayForward { get; set; } = false;
+        private async void btnPlayForward_Click(object sender, RoutedEventArgs e)
+        {
+            if (IsPlayForward) { return; }
+            IsPlayForward = true;
+            playerElement.MediaPlayer.PlaybackSession.PlaybackRate = 2.0;
+            await Task.Delay(1000);
+            playerElement.MediaPlayer.PlaybackSession.PlaybackRate = 1.0;
+            IsPlayForward = false;
+        }
+
         private void BottomBtnSwitchGiftBar_Click(object sender, RoutedEventArgs e)
         {
             m_viewModel.ShowBottomGiftBar = !m_viewModel.ShowBottomGiftBar;
+            SettingService.SetValue(SettingConstants.Live.SHOW_BOTTOM_GIFT_BAR, m_viewModel.ShowBottomGiftBar);
+        }
+
+        private void LowDelaySwitch_Toggled(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is ToggleSwitch ts)) return;
+            if (ts.IsOn)
+            {
+                LowDelayModeBlock.Visibility = Visibility.Visible;
+                SettingService.SetValue(SettingConstants.Live.LOW_DELAY_MODE, true);
+            }
+            else
+            {
+                LowDelayModeBlock.Visibility = Visibility.Collapsed;
+                SettingService.SetValue(SettingConstants.Live.LOW_DELAY_MODE, false);
+            }
+            // 这里可以做个重启播放器的功能...就不需要用户手动重启了
+        }
+
+        private void ChatList_PointerEntered(object sender, PointerRoutedEventArgs e) => isPointerInChatList = true;
+
+        private void ChatList_PointerExited(object sender, PointerRoutedEventArgs e)
+        {
+            isPointerInChatList = false;
+            chatScrollTimer.Stop();
+            chatScrollTimer.Start();
+        }
+
+        private void RootGrid_PointerEntered(object sender, PointerRoutedEventArgs e)
+        {
+            isPointerInThisPage = true;
+            ChatScrollToBottom();
+        }
+
+        private void RootGrid_PointerExited(object sender, PointerRoutedEventArgs e) => isPointerInThisPage = false;
+
+        private async void EmojiButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button button) return;
+            EmojiFlyout.ShowAt(button);
+            if (m_liveRoomViewModel.EmoticonsPackages.Count == 0)
+            {
+                await m_liveRoomViewModel.GetEmoticons();
+            }
+        }
+
+        private void Danmu_TextChanged(object sender, AutoSuggestBoxTextChangedEventArgs e)
+        {
+            if (sender is not AutoSuggestBox obj) return;
+            switch (obj.Name)
+            {
+                case "DanmuText":
+                    DanmuTextWide.Text = obj.Text;
+                    break;
+                case "DanmuTextWide":
+                    DanmuText.Text = obj.Text;
+                    break;
+            }
+        }
+
+        private async void EmojiItem_Click(object sender, ItemClickEventArgs e)
+        {
+            if (e.ClickedItem is not LiveRoomEmoticon emoji) return;
+            if (!emoji.IsBigSticker)
+            {
+                DanmuText.Text += emoji.Text;
+            }
+            else
+            {
+                await m_liveRoomViewModel.SendDanmu(emoji);
+                EmojiFlyout.Hide();
+            }
+        }
+
+        public void UpdatePivotLayout()
+        {
+            pivot.UseLayoutRounding = !pivot.UseLayoutRounding;
+            pivot.UseLayoutRounding = !pivot.UseLayoutRounding;
         }
     }
 }

@@ -4,9 +4,12 @@ using BiliLite.Modules;
 using BiliLite.Services;
 using Microsoft.Toolkit.Uwp.Connectivity;
 using System;
+using System.Threading.Tasks;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Navigation;
+using BiliLite.Models.Common.Search;
+using BiliLite.Services.Biz;
 using BiliLite.ViewModels.Download;
 using BiliLite.ViewModels.Home;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,11 +21,14 @@ namespace BiliLite.Pages
     /// <summary>
     /// 可用于自身或导航至 Frame 内部的空白页。
     /// </summary>
-    public sealed partial class HomePage : Page
+    public sealed partial class HomePage : BasePage, IRefreshablePage, IScrollRecoverablePage
     {
         private static readonly ILogger logger = GlobalLogger.FromCurrentType();
 
         private readonly DownloadPageViewModel m_downloadPageViewModel;
+
+        private readonly SearchService m_searchService;
+        // private readonly CookieService m_cookieService;
         private readonly HomeViewModel m_viewModel;
         readonly Account account;
 
@@ -34,8 +40,19 @@ namespace BiliLite.Pages
             m_viewModel = new HomeViewModel();
             account = new Account();
             m_downloadPageViewModel = App.ServiceProvider.GetRequiredService<DownloadPageViewModel>();
+            m_searchService = App.ServiceProvider.GetRequiredService<SearchService>();
+            // m_cookieService = App.ServiceProvider.GetRequiredService<CookieService>();
             this.DataContext = m_viewModel;
         }
+
+        public async Task Refresh()
+        {
+            if (frame.Content is IRefreshablePage page)
+            {
+                await page.Refresh();
+            }
+        }
+
         private void MessageCenter_LogoutedEvent(object sender, EventArgs e)
         {
             LaodUserStatus();
@@ -68,6 +85,7 @@ namespace BiliLite.Pages
                     if (await account.CheckLoginState())
                     {
                         await account.CheckUpdateCookies();
+                        //await m_cookieService.CheckCookieKeys();
                         await m_viewModel.LoginUserCard();
                     }
                     else
@@ -175,8 +193,8 @@ namespace BiliLite.Pages
                 title = "搜索:" + args.QueryText,
                 parameters = new SearchParameter()
                 {
-                    keyword = args.QueryText,
-                    searchType = SearchType.Video
+                    Keyword = args.QueryText,
+                    SearchType = SearchType.Video
                 }
             });
         }
@@ -241,8 +259,7 @@ namespace BiliLite.Pages
             {
                 icon = Symbol.Message,
                 title = "消息中心",
-                page = typeof(WebPage),
-                parameters = $"https://message.bilibili.com/#whisper"
+                page = typeof(MessagesPage),
             });
         }
 
@@ -317,7 +334,9 @@ namespace BiliLite.Pages
         {
             if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput) return;
             var text = sender.Text;
-            var suggestSearchContents = await new SearchService().GetSearchSuggestContents(text);
+            text = text.TrimEnd();
+            if (string.IsNullOrWhiteSpace(text)) return;
+            var suggestSearchContents = await m_searchService.GetSearchSuggestContents(text);
             if (m_viewModel.SuggestSearchContents == null)
             {
                 m_viewModel.SuggestSearchContents = new System.Collections.ObjectModel.ObservableCollection<string>(suggestSearchContents);
@@ -325,6 +344,14 @@ namespace BiliLite.Pages
             else
             {
                 m_viewModel.SuggestSearchContents.ReplaceRange(suggestSearchContents);
+            }
+        }
+
+        public void ScrollRecover()
+        {
+            if (frame.Content is IScrollRecoverablePage page)
+            {
+                page.ScrollRecover();
             }
         }
     }

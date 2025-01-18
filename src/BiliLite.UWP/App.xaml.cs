@@ -1,25 +1,22 @@
 ﻿using BiliLite.Extensions;
+using BiliLite.Extensions.Notifications;
 using BiliLite.Models.Common;
 using BiliLite.Models.Events;
-using BiliLite.Modules;
+using BiliLite.Pages;
 using BiliLite.Services;
 using FFmpegInteropX;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Toolkit.Uwp.Helpers;
 using System;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Windows.ApplicationModel;
 using Windows.ApplicationModel.Activation;
-using Windows.ApplicationModel.Core;
-using Windows.Foundation;
 using Windows.Graphics.Display;
-using Windows.UI;
-using Windows.UI.ViewManagement;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Navigation;
-using BiliLite.ViewModels.Download;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace BiliLite
 {
@@ -39,16 +36,37 @@ namespace BiliLite
         /// </summary>
         public App()
         {
+            AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
+            AppDomain.CurrentDomain.FirstChanceException += CurrentDomain_FirstChanceException; ;
             App.Current.UnhandledException += App_UnhandledException;
+            // RegisterExceptionHandlingSynchronizationContext();
             FFmpegInteropLogging.SetLogLevel(LogLevel.Info);
             FFmpegInteropLogging.SetLogProvider(this);
-            SqlHelper.InitDB();
+            // SqlHelper.InitDB();
             LogService.Init();
             RegisterService();
             OpenCCNET.ZhConverter.Initialize();
             this.Suspending += OnSuspending;
             this.InitializeComponent();
         }
+
+        private void CurrentDomain_FirstChanceException(object sender, System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs e)
+        {
+            logger.Log("错误发生", LogType.Trace, e.Exception);
+        }
+
+        private void CurrentDomain_UnhandledException(object sender, System.UnhandledExceptionEventArgs e)
+        {
+            if (e.ExceptionObject is Exception ex)
+            {
+                logger.Log("程序运行出现错误", LogType.Error, ex);
+            }
+            else
+            {
+                logger.Log("程序运行出现错误:" + e.ExceptionObject, LogType.Error);
+            }
+        }
+
         private void RegisterExceptionHandlingSynchronizationContext()
         {
             ExceptionHandlingSynchronizationContext
@@ -100,7 +118,7 @@ namespace BiliLite
 
         public void Log(LogLevel level, string message)
         {
-            System.Diagnostics.Debug.WriteLine("FFmpeg ({0}): {1}", level, message);
+            logger.Trace($"FFmpeg ({level}): {message}");
         }
         /// <summary>
         /// 在应用程序由最终用户正常启动时进行调用。
@@ -132,7 +150,7 @@ namespace BiliLite
             {
             }
 
-            InitBili();
+            await InitBili();
             Frame rootFrame = Window.Current.Content as Frame;
 
             // 不要在窗口已包含内容时重复应用程序初始化，
@@ -143,7 +161,6 @@ namespace BiliLite
                 rootFrame = new Frame();
 
                 rootFrame.NavigationFailed += OnNavigationFailed;
-
 
                 //主题颜色
                 rootFrame.RequestedTheme = (ElementTheme)SettingService.GetValue<int>(SettingConstants.UI.THEME, 0);
@@ -156,35 +173,25 @@ namespace BiliLite
             {
                 if (rootFrame.Content == null)
                 {
-                    // 当导航堆栈尚未还原时，导航到第一页，
-                    // 并通过将所需信息作为导航参数传入来配置
-                    // 参数
-
-                    var mode = SettingService.GetValue<int>(SettingConstants.UI.DISPLAY_MODE, 0);
-                    if (mode == 0)
-                    {
-                        rootFrame.Navigate(typeof(MainPage), arguments);
-                    }
-                    else
-                    {
-                        rootFrame.Navigate(typeof(NoTabMainPage), arguments);
-                    }
+                    var mainPage = ServiceProvider.GetRequiredService<IMainPage>();
+                    rootFrame.Content = mainPage;
                 }
-                else
-                {
-                    if (arguments != null && !string.IsNullOrEmpty(arguments.ToString()))
-                    {
-                        await MessageCenter.HandelUrl(arguments.ToString());
-                    }
 
+                var pageSaveService = ServiceProvider.GetRequiredService<PageSaveService>();
+                pageSaveService.HandleStartApp();
+
+                if (arguments != null && !string.IsNullOrEmpty(arguments.ToString()))
+                {
+                    await MessageCenter.HandelUrl(arguments.ToString());
                 }
                 // 确保当前窗口处于活动状态
                 Window.Current.Activate();
-                ExtendAcrylicIntoTitleBar();
+                var themeService = ServiceProvider.GetRequiredService<ThemeService>();
+                themeService.InitTitleBar();
             }
         }
 
-        private async void InitBili()
+        private async Task InitBili()
         {
             //首次运行设置首页的显示样式
             if (SystemInformation.IsFirstRun)
@@ -194,15 +201,51 @@ namespace BiliLite
                 {
                     //如果屏幕分辨率大于16：9,设置为List
                     SettingService.SetValue<int>(SettingConstants.UI.RECMEND_DISPLAY_MODE, 1);
+                    // // 当导航堆栈尚未还原时，导航到第一页，
+                    // // 并通过将所需信息作为导航参数传入来配置参数
+                    // bool loadState = args.PreviousExecutionState == ApplicationExecutionState.Terminated;
+                    // ExtendedSplash extendedSplash = new(args.SplashScreen, loadState);
+                    // rootFrame.Content = extendedSplash;
+                    // Window.Current.Content = rootFrame;
+                    // await Task.Delay(200); // 防止初始屏幕闪烁
                 }
             }
+
             //圆角
             App.Current.Resources["ImageCornerRadius"] = new CornerRadius(SettingService.GetValue<double>(SettingConstants.UI.IMAGE_CORNER_RADIUS, 0));
             await AppHelper.SetRegions();
-            var downloadViewModel = ServiceProvider.GetRequiredService<DownloadPageViewModel>();
-            downloadViewModel.LoadDownloading();
-            downloadViewModel.LoadDownloaded();
+            await InitDb();
+
+            try
+            {
+                var downloadService = ServiceProvider.GetRequiredService<DownloadService>();
+                downloadService.LoadDownloading();
+                downloadService.LoadDownloaded();
+            }
+            catch (Exception ex)
+            {
+                logger.Error("初始化加载下载视频错误", ex);
+            }
             VideoPlayHistoryHelper.LoadABPlayHistories(true);
+
+            try
+            {
+                var themeService = ServiceProvider.GetRequiredService<ThemeService>();
+                themeService.Init();
+            }
+            catch (Exception ex)
+            {
+                logger.Error("初始化主题错误", ex);
+            }
+
+            //var pluginService = ServiceProvider.GetRequiredService<PluginService>();
+            //await pluginService.Start();
+        }
+
+        private async Task InitDb()
+        {
+            var sqlMigrateService = ServiceProvider.GetRequiredService<SqlMigrateService>();
+            await sqlMigrateService.MigrateDatabase();
         }
 
         /// <summary>
@@ -228,30 +271,6 @@ namespace BiliLite
             deferral.Complete();
         }
 
-        public static void ExtendAcrylicIntoTitleBar()
-        {
-            UISettings uISettings = new UISettings();
-            CoreApplication.GetCurrentView().TitleBar.ExtendViewIntoTitleBar = true;
-            ApplicationViewTitleBar titleBar = ApplicationView.GetForCurrentView().TitleBar;
-            titleBar.ButtonBackgroundColor = Colors.Transparent;
-            titleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
-            titleBar.ButtonForegroundColor = TitltBarButtonColor(uISettings);
-            uISettings.ColorValuesChanged += new TypedEventHandler<UISettings, object>((setting, args) =>
-            {
-                titleBar.ButtonForegroundColor = TitltBarButtonColor(setting);
-            });
-        }
-        private static Color TitltBarButtonColor(UISettings uISettings)
-        {
-            var settingTheme = SettingService.GetValue<int>(SettingConstants.UI.THEME, 0);
-            var uiSettings = new Windows.UI.ViewManagement.UISettings();
-            var color = uiSettings.GetColorValue(UIColorType.Foreground);
-            if (settingTheme != 0)
-            {
-                color = settingTheme == 1 ? Colors.Black : Colors.White;
-            }
-            return color;
-        }
         protected override void OnActivated(IActivatedEventArgs args)
         {
             base.OnActivated(args);
@@ -276,8 +295,15 @@ namespace BiliLite
             }
             catch (Exception ex)
             {
-                logger.Error("Start Host Error",ex);
+                logger.Error("Start Host Error", ex);
             }
+        }
+
+        protected override async void OnBackgroundActivated(BackgroundActivatedEventArgs args)
+        {
+            //base.OnBackgroundActivated(args);
+            //IBackgroundTaskInstance taskInstance = args.TaskInstance;
+            await NotificationShowExtensions.Tile();
         }
     }
 }

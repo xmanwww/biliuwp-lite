@@ -1,7 +1,6 @@
 ﻿using BiliLite.Extensions;
 using BiliLite.Models;
 using BiliLite.Models.Common;
-using BiliLite.Modules;
 using BiliLite.Services;
 using System;
 using System.Threading.Tasks;
@@ -9,6 +8,7 @@ using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Navigation;
 using BiliLite.Models.Common.Anime;
+using BiliLite.Models.Common.Season;
 using BiliLite.ViewModels.Home;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -19,7 +19,7 @@ namespace BiliLite.Pages.Home
     /// <summary>
     /// 可用于自身或导航至 Frame 内部的空白页。
     /// </summary>
-    public sealed partial class AnimePage : Page
+    public sealed partial class AnimePage : Page, IRefreshablePage
     {
         private AnimeType animeType;
         public AnimePageViewModel m_viewModel { get; set; }
@@ -100,9 +100,14 @@ namespace BiliLite.Pages.Home
             });
         }
 
-        private async void RefreshContainer_RefreshRequested(Microsoft.UI.Xaml.Controls.RefreshContainer sender, Microsoft.UI.Xaml.Controls.RefreshRequestedEventArgs args)
+        public async Task Refresh()
         {
             await LoadData();
+        }
+
+        private async void RefreshContainer_RefreshRequested(Microsoft.UI.Xaml.Controls.RefreshContainer sender, Microsoft.UI.Xaml.Controls.RefreshRequestedEventArgs args)
+        {
+            await Refresh();
         }
 
         private async void BannerItem_Click(object sender, RoutedEventArgs e)
@@ -123,7 +128,7 @@ namespace BiliLite.Pages.Home
                 title = animeType == AnimeType.Bangumi ? "番剧索引" : "国创索引",
                 parameters = new SeasonIndexParameter()
                 {
-                    type = animeType == AnimeType.Bangumi ? IndexSeasonType.Anime : IndexSeasonType.Guochuang
+                    Type = animeType == AnimeType.Bangumi ? IndexSeasonType.Anime : IndexSeasonType.Guochuang
                 }
             });
         }

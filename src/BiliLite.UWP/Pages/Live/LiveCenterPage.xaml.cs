@@ -1,19 +1,10 @@
 ﻿using BiliLite.Models.Common;
 using BiliLite.Modules.Live.LiveCenter;
 using BiliLite.Services;
+using BiliLite.Services.Interfaces;
 using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Runtime.InteropServices.WindowsRuntime;
-using Windows.Foundation;
-using Windows.Foundation.Collections;
-using Windows.UI.Xaml;
+using System.Threading.Tasks;
 using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Controls.Primitives;
-using Windows.UI.Xaml.Data;
-using Windows.UI.Xaml.Input;
-using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Navigation;
 
 // https://go.microsoft.com/fwlink/?LinkId=234238 上介绍了“空白页”项模板
@@ -23,11 +14,11 @@ namespace BiliLite.Pages.Live
     /// <summary>
     /// 可用于自身或导航至 Frame 内部的空白页。
     /// </summary>
-    public sealed partial class LiveCenterPage : BasePage
+    public sealed partial class LiveCenterPage : BasePage, IRefreshablePage, IUpdatePivotLayout
     {
         readonly LiveAttentionVM liveAttentionVM;
         readonly LiveAttentionUnLiveVM liveAttentionUnLiveVM;
-        readonly LiveCenterHistoryVM  liveCenterHistoryVM;
+        readonly LiveCenterHistoryVM liveCenterHistoryVM;
         readonly LiveCenterVM liveCenterVM;
         public LiveCenterPage()
         {
@@ -43,7 +34,7 @@ namespace BiliLite.Pages.Live
         protected async override void OnNavigatedTo(NavigationEventArgs e)
         {
             base.OnNavigatedTo(e);
-            if(e.NavigationMode== NavigationMode.New)
+            if (e.NavigationMode == NavigationMode.New)
             {
                 liveCenterVM.GetUserInfo();
                 await liveAttentionVM.GetFollows();
@@ -83,12 +74,12 @@ namespace BiliLite.Pages.Live
                 page = typeof(LiveDetailPage),
                 title = data.name + "的直播间",
                 parameters = data.history.oid
-            }) ;
+            });
         }
 
         private async void pivot_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if(pivot.SelectedIndex==1&& liveAttentionUnLiveVM.Items == null)
+            if (pivot.SelectedIndex == 1 && liveAttentionUnLiveVM.Items == null)
             {
                 await liveAttentionUnLiveVM.Get();
             }
@@ -96,6 +87,17 @@ namespace BiliLite.Pages.Live
             {
                 await liveCenterHistoryVM.Get();
             }
+        }
+
+        public async Task Refresh()
+        {
+            throw new NotImplementedException();
+        }
+
+        public void UpdatePivotLayout()
+        {
+            pivot.UseLayoutRounding = !pivot.UseLayoutRounding;
+            pivot.UseLayoutRounding = !pivot.UseLayoutRounding;
         }
     }
 }

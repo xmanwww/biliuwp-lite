@@ -15,14 +15,15 @@
     xmlns:live="using:BiliLite.Models.Common.Live"
     xmlns:live1="using:BiliLite.ViewModels.Live"
     xmlns:Player="using:BiliLite.Models.Common.Player"
+    xmlns:canvas="using:Microsoft.Graphics.Canvas.UI.Xaml"
     Margin="{x:Bind m_viewModel.Margin, Mode=OneWay}"
     Background="Transparent">
     <Page.Resources>
         <convert:DatetimeConvert x:Key="datetime" ></convert:DatetimeConvert>
         <convert:ColorConvert x:Key="colorConvert" ></convert:ColorConvert>
         <convert:DanmakuStyleConvert x:Key="styleConvert"></convert:DanmakuStyleConvert>
-        <SolidColorBrush x:Key="GridViewItemBackgroundSelected" Color="{ThemeResource HighLightColor}" />
-        <SolidColorBrush x:Key="GridViewItemForegroundSelected" Color="{ThemeResource HighLightColor}" />
+        <SolidColorBrush x:Key="GridViewItemBackgroundSelected" Color="{ThemeResource SystemAccentColor}" />
+        <SolidColorBrush x:Key="GridViewItemForegroundSelected" Color="{ThemeResource SystemAccentColor}" />
         <Style TargetType="ComboBox" x:Key="PlayerComboBoxStyle">
             <Setter Property="Padding" Value="8,0" />
             <Setter Property="MinWidth" Value="{ThemeResource ComboBoxThemeMinWidth}" />
@@ -92,7 +93,7 @@
                                                 <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource ComboBoxBorderBrushPointerOver}" />
                                             </ObjectAnimationUsingKeyFrames>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter" Storyboard.TargetProperty="Foreground">
-                                                <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource HighLightColor}"/>
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource SystemAccentColor}"/>
                                             </ObjectAnimationUsingKeyFrames>
                                         </Storyboard>
                                     </VisualState>
@@ -301,13 +302,13 @@
                         <HyperlinkButton Grid.Row="0" Click="BtnOpenDanmuSpace_Click" Padding="0" Margin="4 10 4 2">
                             <Ellipse Width="32" Height="32" StrokeThickness="1" Stroke="{ThemeResource TextColor}">
                                 <Ellipse.Fill>
-                                    <ImageBrush Stretch="UniformToFill" ImageSource="{x:Bind Path=Face,Converter={StaticResource imageConvert2},ConverterParameter='64h',Mode=OneWay}"/>
+                                    <ImageBrush Stretch="UniformToFill" ImageSource="{x:Bind Path=Face,Converter={StaticResource imageConvert2},ConverterParameter='128h',Mode=OneWay}"/>
                                 </Ellipse.Fill>
                             </Ellipse>
                         </HyperlinkButton>
                         <!--房管图标-->
                         <Border Grid.Row="1" HorizontalAlignment="Center" Visibility="{x:Bind ShowAdmin}" BorderThickness="1" BorderBrush="DarkOrange" Background="DarkOrange" CornerRadius="2" Padding="2 0">
-                            <TextBlock HorizontalAlignment="Center" FontSize="10" Foreground="White">房管</TextBlock>
+                            <TextBlock HorizontalAlignment="Center" FontSize="10" Foreground="White" Text="{x:Bind Role, Mode=OneWay}"/>
                         </Border>
                     </Grid>
 
@@ -349,7 +350,7 @@
                             <!--舰长图标-->
                             <Image Grid.Column="2" Visibility="{x:Bind ShowCaptain}" Height="24" VerticalAlignment="Center" Margin="4 0 0 0">
                                 <Image.Source>
-                                    <BitmapImage UriSource="{Binding UserCaptainImage}" DecodePixelWidth="24" DecodePixelHeight="24"/>
+                                    <BitmapImage UriSource="{Binding UserCaptainImage}"/>
                                 </Image.Source>
                             </Image>
                         </Grid>
@@ -361,7 +362,7 @@
                                     <ContentControl Content="{Binding Path=RichText,Mode=OneWay}" Visibility="{x:Bind ShowBigSticker, Converter={StaticResource display}}"></ContentControl>
                                     <Image Visibility="{x:Bind ShowBigSticker}" Height="{x:Bind BigSticker.Height}" Width="{x:Bind BigSticker.Width}">
                                         <Image.Source>
-                                            <BitmapImage UriSource="{x:Bind BigSticker.Url}" DecodePixelWidth="{x:Bind BigSticker.Width}" DecodePixelHeight="{x:Bind BigSticker.Height}"/>
+                                            <BitmapImage UriSource="{x:Bind BigSticker.Url}" />
                                         </Image.Source>
                                     </Image>
                                 </StackPanel>
@@ -371,8 +372,43 @@
                 </Grid>
             </toolkit:WrapPanel>
         </DataTemplate>
+        <Flyout x:Name="EmojiFlyout">
+            <Grid Width="340" Margin="-6 -8">
+                <Pivot ItemsSource="{x:Bind Path=m_liveRoomViewModel.EmoticonsPackages,Mode=OneWay}">
+                    <Pivot.HeaderTemplate>
+                        <DataTemplate x:DataType="live:LiveRoomEmoticonPackage">
+                            <StackPanel Orientation="Horizontal" Height="36" Padding="0 -4">
+                                <Border VerticalAlignment="Center" Padding="0" CornerRadius="{StaticResource ImageCornerRadius}">
+                                    <Image VerticalAlignment="Center" Source="{x:Bind Cover,Mode=OneWay}" Margin="0 4" Height="34"></Image>
+                                </Border>
+                                <TextBlock VerticalAlignment="Center" FontSize="16" Margin="2 0 0 0" Text="{x:Bind Path=Name,Mode=OneWay}"></TextBlock>
+                            </StackPanel>
+                        </DataTemplate>
+                    </Pivot.HeaderTemplate>
+                    <Pivot.ItemTemplate>
+                        <DataTemplate x:DataType="live:LiveRoomEmoticonPackage">
+                            <GridView ItemsSource="{x:Bind Path=Emoticons,Mode=OneWay}" MaxHeight="300" Width="320" SelectionMode="None" IsItemClickEnabled="True" ItemClick="EmojiItem_Click">
+                                <GridView.ItemTemplate>
+                                    <DataTemplate x:DataType="live:LiveRoomEmoticon">
+                                        <StackPanel Width="64" Margin="4 0">
+                                            <Grid MinHeight="56">
+                                                <FontIcon Visibility="{x:Bind LockIconVisibility,Mode=OneWay}" FontFamily="Segoe MDL2 Assets" Glyph="&#xE72E;" FontSize="36" HorizontalAlignment="Stretch"/>
+                                                <Border VerticalAlignment="Center" Padding="0" HorizontalAlignment="Stretch" CornerRadius="{StaticResource ImageCornerRadius}">
+                                                    <Image Source="{x:Bind Url,Mode=OneWay}" Opacity="{x:Bind Opacity,Mode=OneWay}" MinHeight="56"></Image>
+                                                </Border>
+                                            </Grid>
+                                            <TextBlock TextAlignment="Center" FontSize="12" HorizontalAlignment="Center" Text="{x:Bind ShowText,Mode=OneWay}"></TextBlock>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </GridView.ItemTemplate>
+                            </GridView>
+                        </DataTemplate>
+                    </Pivot.ItemTemplate>
+                </Pivot>
+            </Grid>
+        </Flyout>
     </Page.Resources>
-    <Grid>
+    <Grid PointerEntered="RootGrid_PointerEntered" PointerExited="RootGrid_PointerExited">
         <Button x:Name="BtnFoucs" Width="0" Height="0" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="-8 -8 0 0" Background="Transparent" BorderThickness="0"></Button>
         <Grid x:Name="detail" >
             <Grid.ColumnDefinitions>
@@ -404,6 +440,9 @@
                     <!--弹幕-->
                     <Grid Tapped="Grid_Tapped">
                         <danmaku:Danmaku x:Name="DanmuControl"/>
+                    </Grid>
+                    <Grid>
+                        <canvas:CanvasAnimatedControl x:Name="DanmakuCanvas"/>
                     </Grid>
                     <!--亮度-->
                     <Grid x:Name="BrightnessShield" Tapped="Grid_Tapped" Background="#99000000" Opacity="0"></Grid>
@@ -457,7 +496,7 @@
                                         <Image Width="32" Height="32" Source="/Assets/Icon/icon_settings.png" ></Image>
                                         <Button.Flyout>
                                             <Flyout>
-                                                <Pivot Width="280">
+                                                <Pivot Width="325">
                                                     <PivotItem>
                                                         <PivotItem.Header>
                                                             <TextBlock FontSize="18">设置</TextBlock>
@@ -499,24 +538,26 @@
                                                         </PivotItem.Header>
                                                         <StackPanel>
                                                             <StackPanel Orientation="Horizontal">
-                                                                <ToggleSwitch  x:Name="LiveSettingDotReceiveGiftMsg" Margin="0 8 0 0" Header="屏蔽礼物"></ToggleSwitch>
-                                                                <ToggleSwitch  x:Name="LiveSettingDotReceiveWelcomeMsg" Margin="0 8 0 0" Header="屏蔽进场"></ToggleSwitch>
+                                                                <ToggleSwitch  x:Name="LiveSettingDotReceiveGiftMsg" Margin="0 8 0 0" Header="屏蔽礼物信息"></ToggleSwitch>
+                                                                <ToggleSwitch  x:Name="LiveSettingDotReceiveWelcomeMsg" Margin="0 8 0 0" Header="屏蔽进场信息"></ToggleSwitch>
                                                             </StackPanel>
                                                             <StackPanel Orientation="Horizontal">
-                                                                <ToggleSwitch  x:Name="LiveSettingDotReceiveLotteryMsg" Margin="0 8 0 0" Header="屏蔽抽奖信息"></ToggleSwitch>
+                                                                <ToggleSwitch  x:Name="LiveSettingDotReceiveLotteryMsg" Margin="0 8 0 0" Header="屏蔽天选/红包抽奖"></ToggleSwitch>
+                                                                <ToggleSwitch  x:Name="LiveSettingDotShowLotteryDanmu" Margin="0 8 0 0" Header="屏蔽抽奖弹幕"></ToggleSwitch>
                                                             </StackPanel>
                                                             <TextBlock Margin="0 8">关键词屏蔽</TextBlock>
+                                                            <TextBlock Margin="0 -4 0 8" FontSize="12" IsColorFontEnabled="False" Foreground="Gray">💡点击灰色按钮即可删除对应的关键词</TextBlock>
                                                             <Grid >
                                                                 <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition/>
-                                                                    <ColumnDefinition Width="Auto"/>
+                                                                    <ColumnDefinition MaxWidth="160"/>
+                                                                    <ColumnDefinition Width="auto"/>
                                                                     <ColumnDefinition Width="Auto"/>
                                                                 </Grid.ColumnDefinitions>
-                                                                <TextBox x:Name="DanmuSettingTxtWord" PlaceholderText="输入关键词"></TextBox>
-                                                                <Button x:Name="DanmuSettingAddWord" Click="DanmuSettingAddWord_Click" Grid.Column="1"  Margin="8 0 0 0">添加</Button>
+                                                                <TextBox x:Name="DanmuSettingTxtWord" PlaceholderText="输入关键词.."></TextBox>
+                                                                <Button x:Name="DanmuSettingAddWord" Click="btnAddShieldWord_Click" Grid.Column="1"  Margin="8 0 0 0">添加</Button>
                                                                 <Button x:Name="DanmuSettingSyncWords" Visibility="Collapsed"  Grid.Column="2"  Margin="8 0 0 0">同步</Button>
                                                             </Grid>
-                                                            <ItemsControl Margin="0 8 0 0" x:Name="DanmuSettingWords" ItemsSource="{x:Bind Path=settingVM.LiveWords,Mode=OneWay}">
+                                                            <ItemsControl Margin="0 8 0 0" x:Name="DanmuSettingWords" ItemsSource="{x:Bind Path=m_liveSettingsControlViewModel.LiveShieldWords,Mode=OneWay}">
                                                                 <ItemsControl.ItemsPanel>
                                                                     <ItemsPanelTemplate>
                                                                         <toolkit:WrapPanel VerticalSpacing="4" />
@@ -524,7 +565,7 @@
                                                                 </ItemsControl.ItemsPanel>
                                                                 <ItemsControl.ItemTemplate>
                                                                     <DataTemplate>
-                                                                        <HyperlinkButton Margin="0 0 8 0" Click="btnRemoveWords_Click">
+                                                                        <HyperlinkButton Margin="0 0 8 0" Click="btnRemoveShieldWord_Click">
                                                                             <Border CornerRadius="4" Padding="8 4" Background="Gray">
                                                                                 <TextBlock FontSize="12" Foreground="white" Text="{Binding}" ></TextBlock>
                                                                             </Border>
@@ -533,7 +574,32 @@
                                                                 </ItemsControl.ItemTemplate>
                                                             </ItemsControl>
                                                         </StackPanel>
-
+                                                    </PivotItem>
+                                                    <PivotItem>
+                                                        <PivotItem.Header>
+                                                            <TextBlock FontSize="18">低延迟(实验性)</TextBlock>
+                                                        </PivotItem.Header>
+                                                        <StackPanel>
+                                                            <ToggleSwitch x:Name="LowDelayMode" Toggled="LowDelaySwitch_Toggled" Margin="0 8 0 0" Header="⚡低延迟模式"></ToggleSwitch>
+                                                            <TextBlock Margin="0 6 0 0" FontSize="12" IsColorFontEnabled="False" Foreground="Gray" TextWrapping="Wrap">💡开启后请关闭再打开当前直播界面</TextBlock>
+                                                            <StackPanel x:Name="LowDelayModeBlock" Visibility="Collapsed">
+                                                                <StackPanel Margin="0 8 0 0" Orientation="Horizontal">
+                                                                    <TextBlock TextWrapping="Wrap" VerticalAlignment="Center">
+                                                                        <Run>🎞 已储存视频流: </Run>
+                                                                        <Run x:Name="LowDelayHaveStorageUrl">否</Run>
+                                                                    </TextBlock>
+                                                                    <Button Margin="8 0 0 0" Padding="4" VerticalAlignment="Center" Click="btnManualPlayUrlCopy_Click">📜复制视频流</Button>
+                                                                </StackPanel>
+                                                                <TextBlock Margin="0 6 0 0" FontSize="12" IsColorFontEnabled="False" Foreground="Gray" TextWrapping="Wrap">⚠️一般来说, 开播时获取的原始流有效期为1小时</TextBlock>
+                                                                <StackPanel Margin="0 16 0 0" Orientation="Horizontal">
+                                                                    <TextBox x:Name="LowDelayManualPlayUrlTextBox" Padding="4" Width="120" VerticalAlignment="Center" PlaceholderText="✏️输入视频流..."></TextBox>
+                                                                    <Button Margin="8 0 0 0" Padding="4" VerticalAlignment="Center" Click="btnRefreshPlayUrl_Click">🔄更新视频流</Button>
+                                                                </StackPanel>
+                                                                <TextBlock Margin="0 6 0 0" FontSize="12" IsColorFontEnabled="False" Foreground="Gray" TextWrapping="Wrap">⚠️如果输入为空并更新, 则会清除储存的视频流</TextBlock>
+                                                                <Button Margin="0 12 0 0" Padding="5" Click="btnPlayForward_Click">⏩前进一秒</Button>
+                                                                <TextBlock Margin="0 6 0 0" FontSize="12" IsColorFontEnabled="False" Foreground="Gray" TextWrapping="Wrap">💡使用此按钮来手动向前缩小延迟</TextBlock>
+                                                            </StackPanel>
+                                                        </StackPanel>
                                                     </PivotItem>
                                                 </Pivot>
                                             </Flyout>
@@ -571,10 +637,10 @@
                                         <TextBlock x:Name="BottomTextPostion" VerticalAlignment="Center" Foreground="White" Margin="8 0" FontSize="18" Text="{x:Bind Path=m_liveRoomViewModel.LiveTime,Mode=OneWay}"></TextBlock>
 
 
-                                        <Button x:Name="TopBtnOpenDanmaku" BorderThickness="0" Click="TopBtnOpenDanmaku_Click" Visibility="{x:Bind Path=DanmuControl.Visibility,Mode=OneWay,Converter={StaticResource display}}" Background="Transparent" Padding="0" Width="48" Height="48">
+                                        <Button x:Name="TopBtnOpenDanmaku" BorderThickness="0" Click="TopBtnOpenDanmaku_Click" Visibility="{x:Bind Path=m_danmakuController.DanmakuViewModel.IsHide,Mode=OneWay}" Background="Transparent" Padding="0" Width="48" Height="48">
                                             <Image Width="28" Height="28" Source="/Assets/Icon/icon_danmaku_open.png" ></Image>
                                         </Button>
-                                        <Button x:Name="TopBtnCloseDanmaku" BorderThickness="0" Click="TopBtnCloseDanmaku_Click" Visibility="{x:Bind Path=DanmuControl.Visibility,Mode=OneWay}" Background="Transparent" Padding="0" Width="48" Height="48">
+                                        <Button x:Name="TopBtnCloseDanmaku" BorderThickness="0" Click="TopBtnCloseDanmaku_Click" Visibility="{x:Bind Path=m_danmakuController.DanmakuViewModel.IsHide,Mode=OneWay,Converter={StaticResource display}}" Background="Transparent" Padding="0" Width="48" Height="48">
                                             <Image Width="28" Height="28" Source="/Assets/Icon/icon_danmaku_close.png" ></Image>
                                         </Button>
                                         <Button x:Name="TopBtnSettingDanmaku" BorderThickness="0" Background="Transparent" Padding="0" Width="48" Height="48">
@@ -582,33 +648,45 @@
                                             <Button.Flyout>
                                                 <Flyout>
                                                     <StackPanel>
-                                                        <TextBlock Margin="0 4 0 0">弹幕顶部距离 <Run Text="{x:Bind Path=DanmuControl.Margin.Top,Mode=OneWay,Converter={StaticResource numberToStringConvert}}"/></TextBlock>
+                                                        <TextBlock Margin="0 4 0 0">弹幕顶部距离 <Run Text="{x:Bind Path=m_danmakuController.DanmakuViewModel.MarginTop,Mode=OneWay,Converter={StaticResource numberToStringConvert}}"/></TextBlock>
                                                         <Slider  x:Name="DanmuTopMargin" Value="0" Minimum="0" StepFrequency="4"></Slider>
-                                                        <TextBlock Margin="0 4 0 0">弹幕显示区域 <Run Text="{x:Bind Path=DanmuControl.DanmakuArea,Mode=OneWay,Converter={StaticResource numberToStringConvert}}"/></TextBlock>
-                                                        <Slider x:Name="DanmuSettingArea" Value="{x:Bind Path=DanmuControl.DanmakuArea,Mode=TwoWay}" Minimum="0.1" Maximum="1" StepFrequency="0.1"></Slider>
-                                                        <TextBlock Margin="0 4 0 0">弹幕缩放 <Run Text="{x:Bind Path=DanmuControl.DanmakuSizeZoom,Mode=OneWay,Converter={StaticResource numberToStringConvert}}"/></TextBlock>
-                                                        <Slider x:Name="DanmuSettingFontZoom" Value="{x:Bind Path=DanmuControl.DanmakuSizeZoom,Mode=TwoWay}" Minimum="0.1" Maximum="2" StepFrequency="0.05"></Slider>
-                                                        <TextBlock Margin="0 4 0 0">弹幕速度 <Run Text="{x:Bind Path=DanmuControl.DanmakuDuration,Mode=OneWay,Converter={StaticResource numberToStringConvert}}"/></TextBlock>
-                                                        <Slider x:Name="DanmuSettingSpeed" Value="{x:Bind Path=DanmuControl.DanmakuDuration,Mode=TwoWay}" Minimum="1" Maximum="25" StepFrequency="1"></Slider>
-                                                        <TextBlock Margin="0 4 0 0">弹幕透明度 <Run Text="{x:Bind Path=DanmuControl.Opacity,Mode=OneWay,Converter={StaticResource numberToStringConvert}}"/></TextBlock>
-                                                        <Slider  x:Name="DanmuSettingOpacity" Value="{x:Bind Path=DanmuControl.Opacity,Mode=TwoWay}" Minimum="0.1" Maximum="1" StepFrequency="0.1"></Slider>
-                                                        <TextBlock  Margin="0 4">弹幕样式</TextBlock>
-                                                        <ComboBox  x:Name="DanmuSettingStyle"  SelectedIndex="{x:Bind Path=DanmuControl.DanmakuStyle,Converter={StaticResource styleConvert},Mode=TwoWay}" HorizontalAlignment="Stretch">
-                                                            <ComboBox.Items>
-                                                                <ComboBoxItem>重叠</ComboBoxItem>
-                                                                <ComboBoxItem>无边</ComboBoxItem>
-                                                                <ComboBoxItem>阴影</ComboBoxItem>
-                                                                <ComboBoxItem>描边</ComboBoxItem>
-                                                            </ComboBox.Items>
-                                                        </ComboBox>
-                                                        <ToggleSwitch x:Name="DanmuSettingBold" Margin="0 8 0 0"  IsOn="{x:Bind Path=DanmuControl.DanmakuBold,Mode=TwoWay}">
+                                                        <TextBlock Margin="0 4 0 0" Visibility="{x:Bind m_danmakuController.DanmakuViewModel.ShowAreaControl}">弹幕显示区域 
+                                                            <Run Text="{x:Bind Path=m_danmakuController.DanmakuViewModel.Area,Mode=OneWay,Converter={StaticResource numberToStringConvert}}"/></TextBlock>
+                                                        <Slider x:Name="DanmuSettingArea" Visibility="{x:Bind m_danmakuController.DanmakuViewModel.ShowAreaControl}" 
+                                                                Value="{x:Bind Path=m_danmakuController.DanmakuViewModel.Area,Mode=OneWay}" Minimum="0.1" Maximum="1" StepFrequency="0.1"></Slider>
+                                                        <TextBlock Margin="0 4 0 0">弹幕缩放 
+                                                            <Run Text="{x:Bind Path=m_danmakuController.DanmakuViewModel.SizeZoom,Mode=OneWay,Converter={StaticResource numberToStringConvert}}"/></TextBlock>
+                                                        <Slider x:Name="DanmuSettingFontZoom" Value="{x:Bind Path=m_danmakuController.DanmakuViewModel.SizeZoom,Mode=OneWay}" Minimum="0.1" Maximum="2" StepFrequency="0.05"></Slider>
+                                                        <TextBlock Margin="0 4 0 0">弹幕速度 
+                                                            <Run Text="{x:Bind Path=m_danmakuController.DanmakuViewModel.Speed,Mode=OneWay,Converter={StaticResource numberToStringConvert}}"/></TextBlock>
+                                                        <Slider x:Name="DanmuSettingSpeed" Value="{x:Bind Path=m_danmakuController.DanmakuViewModel.Speed,Mode=OneWay}" Minimum="1" Maximum="25" StepFrequency="1"></Slider>
+                                                        <TextBlock Margin="0 4 0 0">弹幕透明度 
+                                                            <Run Text="{x:Bind Path=m_danmakuController.DanmakuViewModel.Opacity,Mode=OneWay,Converter={StaticResource numberToStringConvert}}"/></TextBlock>
+                                                        <Slider  x:Name="DanmuSettingOpacity" Value="{x:Bind Path=m_danmakuController.DanmakuViewModel.Opacity,Mode=OneWay}" Minimum="0.1" Maximum="1" StepFrequency="0.1"></Slider>
+
+                                                        <TextBlock Margin="0 4 0 0">
+                                                            弹幕字体
+                                                        </TextBlock>
+                                                        <AutoSuggestBox QueryIcon="Accept" x:Name="DanmuSettingFont"></AutoSuggestBox>
+
+                                                        <StackPanel Visibility="{x:Bind m_danmakuController.DanmakuViewModel.ShowBoldStyleControl}">
+                                                            <TextBlock  Margin="0 4">弹幕样式</TextBlock>
+                                                            <ComboBox  x:Name="DanmuSettingStyle" SelectedIndex="{x:Bind Path=m_danmakuController.DanmakuViewModel.BolderStyle,Converter={StaticResource styleConvert},Mode=TwoWay}">
+                                                                <ComboBox.Items>
+                                                                    <ComboBoxItem>重叠</ComboBoxItem>
+                                                                    <ComboBoxItem>无边</ComboBoxItem>
+                                                                    <ComboBoxItem>阴影</ComboBoxItem>
+                                                                    <ComboBoxItem>描边</ComboBoxItem>
+                                                                </ComboBox.Items>
+                                                            </ComboBox>
+                                                        </StackPanel>
+
+                                                        <ToggleSwitch x:Name="DanmuSettingBold" Margin="0 8 0 0"  IsOn="{x:Bind Path=m_danmakuController.DanmakuViewModel.Bold,Mode=TwoWay}" Visibility="{x:Bind m_danmakuController.DanmakuViewModel.ShowBoldControl}">
                                                             <ToggleSwitch.Header>
-                                                                <TextBlock >字体加粗</TextBlock>
+                                                                <TextBlock>字体加粗</TextBlock>
                                                             </ToggleSwitch.Header>
                                                         </ToggleSwitch>
 
-
-                                                        
                                                     </StackPanel>
                                                 </Flyout>
                                             </Button.Flyout>
@@ -617,9 +695,31 @@
                                     <fa:FontAwesome Icon="Solid_Comments" FontSize="20"></fa:FontAwesome>
                                 </HyperlinkButton>-->
                                     </StackPanel>
-                                    <Grid  x:Name="BottomBtnSendDanmakuWide" Visibility="Collapsed" Grid.Column="1" Margin="12 0" MaxWidth="400">
-                                        <TextBox x:Name="SendDanmakuTextBox"  Padding="8 8 56 8" BorderThickness="0"  Foreground="White" Background="#66FFFFFF"  VerticalAlignment="Center" PlaceholderText="发个友善的弹幕见证当下"></TextBox>
-                                        <Button x:Name="SendDanmakuButton"  BorderThickness="0"  Background="Gray" VerticalAlignment="Stretch" HorizontalAlignment="Right" Height="35" Width="56" Foreground="White" Opacity="0.8">发送</Button>
+                                    <Grid x:Name="BottomBtnSendDanmakuWide" Visibility="Collapsed" Grid.Column="1" Margin="12 0" MaxWidth="400">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"></ColumnDefinition>
+                                            <ColumnDefinition Width="Auto"></ColumnDefinition>
+                                        </Grid.ColumnDefinitions>
+                                        <AutoSuggestBox x:Name="DanmuTextWide"
+                                            VerticalAlignment="Center" 
+                                            Padding="8 8 56 8" 
+                                            BorderThickness="0" 
+                                            Text="{x:Bind m_viewModel.DanmakuInput,Mode=TwoWay}"
+                                            QuerySubmitted="DanmuText_QuerySubmitted"
+                                            QueryIcon="Send"
+                                            PlaceholderText="说点什么吧~">
+                                        </AutoSuggestBox>
+                                        <Button Grid.Column="1"
+                                                Click="EmojiButton_Click"
+                                                Padding="0"
+                                                Width="32"
+                                                Height="28"
+                                                BorderThickness="0"
+                                                Background="Transparent"
+                                                HorizontalAlignment="Right"
+                                                VerticalAlignment="Center">
+                                            <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xED54;" FontSize="14"/>
+                                        </Button>
                                     </Grid>
 
 
@@ -692,10 +792,10 @@
                                 <HyperlinkButton  Click="BottomBtnPlay_Click" Visibility="{Binding ElementName=BottomBtnPlay,Path=Visibility,Mode=OneWay}" Foreground="White" Padding="8" Width="48" Height="48">
                                     <fa:FontAwesome Icon="Solid_Play"  FontSize="20"></fa:FontAwesome>
                                 </HyperlinkButton>
-                                <Button Click="TopBtnOpenDanmaku_Click" Visibility="{x:Bind Path=DanmuControl.Visibility,Mode=OneWay,Converter={StaticResource display}}" Background="Transparent" Padding="0" Width="48" Height="48">
+                                <Button Click="TopBtnOpenDanmaku_Click" Visibility="{x:Bind Path=m_danmakuController.DanmakuViewModel.IsHide,Mode=OneWay}" Background="Transparent" Padding="0" Width="48" Height="48">
                                     <Image Width="28" Height="28" Source="/Assets/Icon/icon_danmaku_open.png" ></Image>
                                 </Button>
-                                <Button  Click="TopBtnCloseDanmaku_Click" Visibility="{x:Bind Path=DanmuControl.Visibility,Mode=OneWay}" Background="Transparent" Padding="0" Width="48" Height="48">
+                                <Button  Click="TopBtnCloseDanmaku_Click" Visibility="{x:Bind Path=m_danmakuController.DanmakuViewModel.IsHide,Mode=OneWay,Converter={StaticResource display}}" Background="Transparent" Padding="0" Width="48" Height="48">
                                     <Image Width="28" Height="28" Source="/Assets/Icon/icon_danmaku_close.png" ></Image>
                                 </Button>
                                 <HyperlinkButton x:Name="BottomBtnExitMiniWindows"  VerticalAlignment="Bottom" Click="BottomBtnExitMiniWindows_Click"  ToolTipService.ToolTip="退出小窗置顶" Foreground="White" Padding="8" Width="48" Height="48">
@@ -763,7 +863,7 @@
                                                 <ColumnDefinition Width="Auto"/>
                                                 <ColumnDefinition Width="*"/>
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Grid.Column="0" Margin="0 4" TextWrapping="Wrap" Foreground="Gray" Text="附加礼物："/>
+                                            <TextBlock Grid.Column="0" Margin="0 4" TextWrapping="Wrap" Foreground="Gray" Text="需要送出："/>
                                             <TextBlock Grid.Column="1" Margin="0 4" TextWrapping="Wrap" HorizontalAlignment="Center">
                                                 <Run Text="{x:Bind Path=m_liveRoomViewModel.LotteryViewModel.AnchorLotteryInfo.GiftName,Mode=OneWay}"/>
                                                 <Run Text="×"/>
@@ -804,7 +904,7 @@
                                         <TextBlock Margin="0 4" TextWrapping="Wrap"><Run Foreground="Gray">弹幕口令：</Run><Run Text="{x:Bind Path=m_liveRoomViewModel.LotteryViewModel.AnchorLotteryInfo.Danmu,Mode=OneWay}"/></TextBlock>
                                         <TextBlock Margin="0 4" TextWrapping="Wrap" Visibility="{x:Bind Path=m_liveRoomViewModel.LotteryViewModel.AnchorLotteryInfo.ShowGift,Mode=OneWay}"><Run Foreground="Gray">赠送礼物：</Run><Run Text="{x:Bind Path=m_liveRoomViewModel.LotteryViewModel.AnchorLotteryInfo.GiftName,Mode=OneWay}"/>x<Run Text="{x:Bind Path=m_liveRoomViewModel.LotteryViewModel.AnchorLotteryInfo.GiftNum,Mode=OneWay}"/></TextBlock>
                                         <TextBlock Margin="0 4" TextWrapping="Wrap"><Run Foreground="Gray">限制条件：</Run><Run Text="{x:Bind Path=m_liveRoomViewModel.LotteryViewModel.AnchorLotteryInfo.RequireText,Mode=OneWay}"/></TextBlock>-->
-                                        <Button x:Name="BtnSendLotteryDanmu" Visibility="{x:Bind Path=m_liveRoomViewModel.ShowAnchorLotteryWinnerList,Mode=OneWay,Converter={StaticResource display}}" Click="BtnSendLotteryDanmu_Click" Margin="0 4 0 0" HorizontalAlignment="Stretch">一键发弹幕</Button>
+                                        <Button x:Name="BtnSendLotteryDanmu" Visibility="{x:Bind Path=m_liveRoomViewModel.ShowAnchorLotteryWinnerList,Mode=OneWay,Converter={StaticResource display}}" Click="BtnSendAnchorLotteryDanmu_Click" Margin="0 4 0 0" HorizontalAlignment="Stretch">一键参与</Button>
                                     </StackPanel>
                                 </Flyout>
                             </Button.Flyout>
@@ -835,7 +935,7 @@
                                             <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center">
                                                 <Ellipse Width="36" Height="36">
                                                     <Ellipse.Fill>
-                                                        <ImageBrush ImageSource="{x:Bind Path=m_liveRoomViewModel.LotteryViewModel.RedPocketLotteryInfo.SenderFace,Converter={StaticResource imageConvert2},ConverterParameter='36h',Mode=OneWay}" Stretch="UniformToFill"/>
+                                                        <ImageBrush ImageSource="{x:Bind Path=m_liveRoomViewModel.LotteryViewModel.RedPocketLotteryInfo.SenderFace,Converter={StaticResource imageConvert2},ConverterParameter='128h',Mode=OneWay}" Stretch="UniformToFill"/>
                                                     </Ellipse.Fill>
                                                 </Ellipse>
                                                 <TextBlock Margin="4 0" TextWrapping="Wrap" Text="{x:Bind Path=m_liveRoomViewModel.LotteryViewModel.RedPocketLotteryInfo.SenderName,Mode=OneWay}" VerticalAlignment="Center"></TextBlock>
@@ -1062,15 +1162,15 @@
                     <HyperlinkButton Padding="0" Click="BtnOpenUser_Click">
                         <Ellipse Width="48" Height="48" >
                             <Ellipse.Fill>
-                                <ImageBrush Stretch="UniformToFill" ImageSource="{x:Bind Path=m_liveRoomViewModel.LiveInfo.AnchorInfo.BaseInfo.Face,Converter={StaticResource imageConvert2},ConverterParameter='64h',Mode=OneWay}"/>
+                                <ImageBrush Stretch="UniformToFill" ImageSource="{x:Bind Path=m_liveRoomViewModel.LiveInfo.AnchorInfo.BaseInfo.Face,Converter={StaticResource imageConvert2},ConverterParameter='128h',Mode=OneWay}"/>
                             </Ellipse.Fill>
                         </Ellipse>
                     </HyperlinkButton>
                     <StackPanel Grid.Column="1" Margin="8 0" VerticalAlignment="Center">
                         <TextBlock Text="{x:Bind Path=m_liveRoomViewModel.LiveInfo.AnchorInfo.BaseInfo.Uname,Mode=OneWay}"></TextBlock>
-                        <TextBlock Margin="0 4 0 0" Foreground="Gray" FontSize="12"><Run Text="{x:Bind Path=m_liveRoomViewModel.WatchedNum,Mode=OneWay}"/> 粉丝:<Run Text="{x:Bind Path=m_liveRoomViewModel.LiveInfo.AnchorInfo.RelationInfo.Attention,Converter={StaticResource numberToStringConvert},Mode=OneWay}"/></TextBlock>
+                        <TextBlock Margin="0 4 0 0" Foreground="Gray" FontSize="12"><Run Text="{x:Bind Path=m_liveRoomViewModel.ViewerNumCount,Mode=OneWay}"/> 粉丝:<Run Text="{x:Bind Path=m_liveRoomViewModel.LiveInfo.AnchorInfo.RelationInfo.Attention,Converter={StaticResource numberToStringConvert},Mode=OneWay}"/></TextBlock>
                     </StackPanel>
-                    <Button x:Name="BtnAttention" Click="BtnAttention_Click" FontSize="12" Visibility="{x:Bind Path=m_liveRoomViewModel.Attention,Mode=OneWay,Converter={StaticResource display}}" Grid.Column="2" Background="{ThemeResource HighLightColor}" Foreground="White">关注</Button>
+                    <Button x:Name="BtnAttention" Click="BtnAttention_Click" FontSize="12" Visibility="{x:Bind Path=m_liveRoomViewModel.Attention,Mode=OneWay,Converter={StaticResource display}}" Grid.Column="2" Background="{ThemeResource SystemAccentColor}" Foreground="White">关注</Button>
                     <Button x:Name="BtnCacnelAttention" Click="BtnCacnelAttention_Click" FontSize="12" Visibility="{x:Bind Path=m_liveRoomViewModel.Attention,Mode=OneWay}" Grid.Column="2">已关注</Button>
                 </Grid>
                 <Pivot Grid.Row="1" x:Name="pivot" SelectionChanged="pivot_SelectionChanged">
@@ -1078,7 +1178,7 @@
                         <PivotItem.Header>
                             <TextBlock  Text="互动" FontSize="16"></TextBlock>
                         </PivotItem.Header>
-                        <Grid>
+                        <Grid PointerEntered="ChatList_PointerEntered" PointerExited="ChatList_PointerExited">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition/>
@@ -1102,11 +1202,11 @@
                                                             <ColumnDefinition Width="Auto"/>
                                                             <ColumnDefinition/>
                                                         </Grid.ColumnDefinitions>
-                                                        <ProgressBar Grid.ColumnSpan="2" Height="48" Foreground="{x:Bind Path=BackgroundBottomColor,Mode=OneWay,Converter={StaticResource colorConvert}}" Background="Transparent" Value="{x:Bind Path=Time,Mode=OneWay}" Maximum="{x:Bind Path=MaxTime,Mode=OneWay}"></ProgressBar>
+                                                        <muxc:ProgressBar Grid.ColumnSpan="2" Height="48" MinHeight="48" Foreground="{x:Bind Path=BackgroundBottomColor,Mode=OneWay,Converter={StaticResource colorConvert}}" Background="Transparent" Value="{x:Bind Path=Time,Mode=OneWay}" Maximum="{x:Bind Path=MaxTime,Mode=OneWay}"></muxc:ProgressBar>
 
-                                                        <Ellipse Width="32" Height="32" Margin="2 0 0 0">
+                                                        <Ellipse Width="32" Height="32" Margin="2 0 0 0" StrokeThickness="1" Stroke="Gray">
                                                             <Ellipse.Fill>
-                                                                <ImageBrush ImageSource="{x:Bind Path=Face,Converter={StaticResource imageConvert2},ConverterParameter='48w'}"></ImageBrush>
+                                                                <ImageBrush ImageSource="{x:Bind Path=Face,Converter={StaticResource imageConvert2},ConverterParameter='128w'}"></ImageBrush>
                                                             </Ellipse.Fill>
                                                         </Ellipse>
 
@@ -1126,9 +1226,9 @@
                                                                 </Grid.ColumnDefinitions>
                                                                 <Image Grid.ColumnSpan="3" Margin="0 0 -36 0" HorizontalAlignment="Right" Source="{x:Bind Path=BackgroundImage}"></Image>
                                                                 <Grid Margin="12 4">
-                                                                    <Ellipse  Width="36" Height="36">
+                                                                    <Ellipse  Width="36" Height="36" StrokeThickness="1" Stroke="Gray">
                                                                         <Ellipse.Fill>
-                                                                            <ImageBrush ImageSource="{x:Bind Path=Face,Converter={StaticResource imageConvert2},ConverterParameter='48w'}"></ImageBrush>
+                                                                            <ImageBrush ImageSource="{x:Bind Path=Face,Converter={StaticResource imageConvert2},ConverterParameter='128w'}"></ImageBrush>
                                                                         </Ellipse.Fill>
                                                                     </Ellipse>
                                                                     <Image Source="{x:Bind Path=FaceFrame}"></Image>
@@ -1179,7 +1279,7 @@
                                 <ListView.ItemTemplate>
                                     <DataTemplate x:DataType="live:GiftMsgModel">
                                         <StackPanel Orientation="Horizontal">
-                                            <TextBlock Foreground="HotPink" VerticalAlignment="Center" Text="{x:Bind Path=UserName}"></TextBlock>
+                                            <TextBlock Foreground="{ThemeResource SystemAccentColor}" VerticalAlignment="Center" Text="{x:Bind Path=UserName}"></TextBlock>
                                             <TextBlock  VerticalAlignment="Center" Margin="4 0">赠送</TextBlock>
                                             <TextBlock  VerticalAlignment="Center" Text="{x:Bind Path=GiftName}"></TextBlock>
                                             <Image Width="24" Source="{x:Bind Path=Gif}"></Image>
@@ -1190,7 +1290,26 @@
 
                             </ListView>
                             <Grid  Grid.Row="3" Background="{ThemeResource NavigationViewTopPaneBackground}" Padding="8">
-                                <AutoSuggestBox x:Name="DanmuText" QuerySubmitted="DanmuText_QuerySubmitted" QueryIcon="Send" PlaceholderText="说点什么吧"></AutoSuggestBox>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"></ColumnDefinition>
+                                    <ColumnDefinition Width="Auto"></ColumnDefinition>
+                                </Grid.ColumnDefinitions>
+                                <AutoSuggestBox x:Name="DanmuText" 
+                                                QuerySubmitted="DanmuText_QuerySubmitted" 
+                                                Text="{x:Bind m_viewModel.DanmakuInput,Mode=TwoWay}"
+                                                QueryIcon="Send" 
+                                                PlaceholderText="说点什么吧"></AutoSuggestBox>
+                                <Button Grid.Column="1"
+                                    Click="EmojiButton_Click"
+                                    Padding="0"
+                                    Width="32"
+                                    Height="28"
+                                    BorderThickness="0"
+                                    Background="Transparent"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center">
+                                    <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xED54;" FontSize="14"/>
+                                </Button>
                             </Grid>
                         </Grid>
                     </PivotItem>
@@ -1203,7 +1322,7 @@
                                 <Grid HorizontalAlignment="Center">
                                     <Ellipse Width="56" Height="56" >
                                         <Ellipse.Fill>
-                                            <ImageBrush Stretch="UniformToFill" ImageSource="{x:Bind Path=m_liveRoomViewModel.Profile.Face,Mode=OneWay,Converter={StaticResource imageConvert2},ConverterParameter='56h'}"/>
+                                            <ImageBrush Stretch="UniformToFill" ImageSource="{x:Bind Path=m_liveRoomViewModel.Profile.Face,Mode=OneWay,Converter={StaticResource imageConvert2},ConverterParameter='128h'}"/>
                                         </Ellipse.Fill>
                                     </Ellipse>
                                     <Image Width="24" Height="24" HorizontalAlignment="Right" VerticalAlignment="Bottom" Source="{x:Bind Path=m_liveRoomViewModel.Profile.Verify,Mode=OneWay}"></Image>
@@ -1283,7 +1402,7 @@
                                                             </Border>
                                                             <Ellipse  Margin="8 0 0 0" Width="30" Height="30" >
                                                                 <Ellipse.Fill>
-                                                                    <ImageBrush ImageSource="{x:Bind Path=Face,Converter={StaticResource imageConvert2},ConverterParameter='48h'}"/>
+                                                                    <ImageBrush ImageSource="{x:Bind Path=Face,Converter={StaticResource imageConvert2},ConverterParameter='128h'}"/>
                                                                 </Ellipse.Fill>
                                                             </Ellipse>
                                                             <TextBlock Margin="4 0 0 0" Text="{x:Bind Uname}" VerticalAlignment="Center"></TextBlock>
@@ -1313,9 +1432,9 @@
                             </Grid>
                         </Grid>
                     </PivotItem>
-                    <PivotItem Margin="0">
+                    <PivotItem Margin="0" x:Name="pivot_Guard">
                         <PivotItem.Header>
-                            <TextBlock FontSize="16">大航海(<Run Text="{x:Bind Path=m_liveRoomViewModel.GuardNum,Mode=OneWay}"/>)</TextBlock>
+                            <TextBlock FontSize="16">大航海<Run FontSize="13" Text="{x:Bind Path=m_liveRoomViewModel.GuardNum,Mode=OneWay}"/></TextBlock>
                         </PivotItem.Header>
                         <Grid>
                             <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="8 0">
@@ -1331,7 +1450,7 @@
                                                     </Image>
                                                     <Ellipse Width="30" Height="30" Margin="4 0">
                                                         <Ellipse.Fill>
-                                                            <ImageBrush ImageSource="{x:Bind Face,Converter={StaticResource imageConvert2},ConverterParameter='30h',Mode=OneWay}" Stretch="UniformToFill"/>
+                                                            <ImageBrush ImageSource="{x:Bind Face,Converter={StaticResource imageConvert2},ConverterParameter='128h',Mode=OneWay}" Stretch="UniformToFill"/>
                                                         </Ellipse.Fill>
                                                     </Ellipse>
                                                     <TextBlock Margin="4 0" VerticalAlignment="Center" Text="{x:Bind Username}"></TextBlock>

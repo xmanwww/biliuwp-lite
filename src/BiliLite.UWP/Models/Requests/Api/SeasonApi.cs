@@ -1,12 +1,19 @@
 ﻿using BiliLite.Services;
 using System;
 using BiliLite.Models.Common;
-using Bilibili.App.View.V1;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace BiliLite.Models.Requests.Api
 {
     public class SeasonApi : BaseApi
     {
+        private readonly CookieService m_cookieService;
+
+        public SeasonApi()
+        {
+            m_cookieService = App.ServiceProvider.GetRequiredService<CookieService>();
+        }
+
         /// <summary>
         /// 用season_id / ep_id 取番剧信息
         /// </summary>
@@ -20,7 +27,7 @@ namespace BiliLite.Models.Requests.Api
 
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Get,
+                method = HttpMethods.Get,
                 baseUrl = $"{baseUrl}/pgc/view/v2/app/season",
                 parameter = ApiHelper.MustParameter(AppKey, true),
             };
@@ -47,7 +54,7 @@ namespace BiliLite.Models.Requests.Api
         {
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Get,
+                method = HttpMethods.Get,
                 baseUrl = $"{ApiHelper.API_BASE_URL}/pgc/review/short/list",
                 parameter = $"media_id={media_id}&ps=20&sort={sort}&cursor={next}"
             };
@@ -64,11 +71,12 @@ namespace BiliLite.Models.Requests.Api
         /// <returns></returns>
         public ApiModel LikeReview(int media_id, int review_id, ReviewType review_type = ReviewType.Short)
         {
+            var csrf = m_cookieService.GetCSRFToken();
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Post,
-                baseUrl = $"https://bangumi.bilibili.com/review/api/like",
-                body = $"{ApiHelper.MustParameter(AppKey, true)}&media_id={media_id}&review_id={review_id}&review_type={(int)review_type}"
+                method = HttpMethods.Post,
+                baseUrl = $"https://api.bilibili.com/pgc/review/action/like",
+                body = $"{ApiHelper.MustParameter(AppKey, true)}&media_id={media_id}&review_id={review_id}&review_type={(int)review_type}",
             };
             api.body += ApiHelper.GetSign(api.body, AppKey);
             return api;
@@ -82,8 +90,8 @@ namespace BiliLite.Models.Requests.Api
         {
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Post,
-                baseUrl = $"https://bangumi.bilibili.com/review/api/dislike",
+                method = HttpMethods.Post,
+                baseUrl = $"https://api.bilibili.com/pgc/review/action/dislike",
                 body = $"{ApiHelper.MustParameter(AppKey, true)}&media_id={media_id}&review_id={review_id}&review_type={(int)review_type}"
             };
             api.body += ApiHelper.GetSign(api.body, AppKey);
@@ -101,8 +109,8 @@ namespace BiliLite.Models.Requests.Api
         {
             var api = new ApiModel()
             {
-                method = RestSharp.Method.Post,
-                baseUrl = $"https://bangumi.bilibili.com/review/api/short/post",
+                method = HttpMethods.Post,
+                baseUrl = $"https://api.bilibili.com/pgc/review/action/short/post",
                 body = $"{ApiHelper.MustParameter(AppKey, true)}&media_id={media_id}&content={Uri.EscapeDataString(content)}&share_feed={(share_feed ? 1 : 0)}&score={score}"
             };
             api.body += ApiHelper.GetSign(api.body, AppKey);

@@ -9,13 +9,13 @@
     mc:Ignorable="d"
     Background="Transparent">
     <Page.Resources>
-        <SolidColorBrush x:Key="PivotHeaderBackground" Color="{ThemeResource TopPaneBackground}"></SolidColorBrush>
+        <SolidColorBrush x:Key="PivotHeaderBackground" Color="Transparent"></SolidColorBrush>
         <SolidColorBrush x:Key="SystemControlHighlightAltAccentBrush" Color="White"></SolidColorBrush>
     </Page.Resources>
     <Grid>
         
     
-    <Pivot ItemsSource="{x:Bind Path=liveAreaVM.Items,Mode=OneWay}" >
+    <Pivot x:Name="pivot" ItemsSource="{x:Bind Path=liveAreaVM.Items,Mode=OneWay}" >
         <Pivot.HeaderTemplate>
             <DataTemplate x:DataType="modules:LiveAreaModel">
                 <TextBlock FontSize="15" Text="{x:Bind Path=name}"></TextBlock>

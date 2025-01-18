@@ -20,11 +20,12 @@ using BiliLite.Models;
 using BiliLite.Models.Requests.Api.User;
 using BiliLite.Dialogs;
 using BiliLite.Modules.User;
+using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
 
 namespace BiliLite.ViewModels.UserDynamic
 {
-    public class UserDynamicSpaceViewModel : BaseViewModel
+    public class UserDynamicSpaceViewModel : BaseViewModel, IUserDynamicCommands
     {
         #region Fields
 
@@ -56,6 +57,7 @@ namespace BiliLite.ViewModels.UserDynamic
             RepostCommand = new RelayCommand<DynamicV2ItemViewModel>(OpenSendDynamicDialog);
             LaunchUrlCommand = new RelayCommand<string>(LaunchUrl);
             CopyDynCommand = new RelayCommand<DynamicV2ItemViewModel>(CopyDyn);
+            TagCommand = new RelayCommand<object>(OpenTag);
             WatchLaterCommand = m_watchLaterVm.AddCommandWithAvId;
         }
 
@@ -85,6 +87,8 @@ namespace BiliLite.ViewModels.UserDynamic
 
         public ICommand CopyDynCommand { get; set; }
 
+        public ICommand TagCommand { get; set; }
+
         public bool CanLoadMore { get; set; }
 
         public bool Loading { get; set; }
@@ -93,13 +97,7 @@ namespace BiliLite.ViewModels.UserDynamic
 
         public ObservableCollection<DynamicV2ItemViewModel> DynamicItems { get; set; }
 
-        public int CommentControlWidth
-        {
-            get
-            {
-                return SettingService.GetValue(SettingConstants.UI.RIGHT_DETAIL_WIDTH, 320);
-            }
-        }
+        public double CommentControlWidth => SettingService.GetValue(SettingConstants.UI.DYNAMIC_COMMENT_WIDTH, SettingConstants.UI.DEFAULT_DYNAMIC_COMMENT_WIDTH);
 
         #endregion
 
@@ -111,15 +109,9 @@ namespace BiliLite.ViewModels.UserDynamic
 
         #region Private Methods
 
-        private void OpenUser(object userId)
+        private void OpenUser(object parameter)
         {
-            MessageCenter.NavigateToPage(this, new NavigationInfo()
-            {
-                icon = Symbol.Contact,
-                page = typeof(UserInfoPage),
-                title = "用户中心",
-                parameters = userId
-            });
+            this.OpenUserEx(parameter);
         }
 
         private void OpenComment(DynamicV2ItemViewModel data)
@@ -136,6 +128,18 @@ namespace BiliLite.ViewModels.UserDynamic
                 page = typeof(WebPage),
                 title = "加载中...",
                 parameters = url
+            });
+        }
+
+        private void OpenTag(object name)
+        {
+            //TODO 打开话题
+            MessageCenter.NavigateToPage(this, new NavigationInfo()
+            {
+                icon = Symbol.World,
+                page = typeof(WebPage),
+                title = name.ToString(),
+                parameters = "https://t.bilibili.com/topic/name/" + Uri.EscapeDataString(name.ToString())
             });
         }
 
@@ -178,11 +182,7 @@ namespace BiliLite.ViewModels.UserDynamic
 
         private async void LaunchUrl(string url)
         {
-            var result = await MessageCenter.HandelUrl(url);
-            if (!result)
-            {
-                Notify.ShowMessageToast("无法打开Url");
-            }
+            await this.LaunchUrlEx(url);
         }
 
         private async Task DoLikeCore(DynamicV2ItemViewModel item)
@@ -235,17 +235,17 @@ namespace BiliLite.ViewModels.UserDynamic
         {
             if (!await BiliExtensions.ActionCheckLogin()) return;
 
-            var sendDynamicDialog = new SendDynamicDialog();
+            var sendDynamicDialog = App.ServiceProvider.GetRequiredService<SendDynamicV2Dialog>();
             if (data != null)
             {
-                sendDynamicDialog = new SendDynamicDialog(data);
+                sendDynamicDialog.SetRepost(data);
             }
             await sendDynamicDialog.ShowAsync();
         }
 
         private void CopyDyn(DynamicV2ItemViewModel data)
         {
-            var dataStr = JsonConvert.SerializeObject(data);
+            var dataStr = data.SourceJson;
             Notify.ShowMessageToast(dataStr.SetClipboard() ? "已复制" : "复制失败");
         }
 
